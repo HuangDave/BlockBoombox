@@ -30,8 +30,8 @@ struct Point_t
 
 struct Size_t
 {
-  uint16_t width;
-  uint16_t height;
+  size_t width;
+  size_t height;
 };
 
 struct Frame_t
@@ -39,7 +39,7 @@ struct Frame_t
   Point_t origin;
   Size_t size;
 
-  explicit Frame_t(uint16_t x, uint16_t y, uint16_t width, uint16_t height)
+  explicit Frame_t(uint16_t x, uint16_t y, size_t width, size_t height)
       : origin({ .x = x, .y = y }), size({ .width = width, .height = height })
   {
   }

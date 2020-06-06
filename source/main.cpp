@@ -10,19 +10,26 @@
 namespace
 {
 sjsu::lpc17xx::Spi spi0(sjsu::lpc17xx::SpiBus::kSpi0);
-sjsu::lpc17xx::Gpio lcd_dc(2, 5);
-sjsu::lpc17xx::Gpio lcd_rst(2, 6);
+sjsu::lpc17xx::Gpio lcd_dc(0, 1);
+sjsu::lpc17xx::Gpio lcd_rst(0, 0);
 sjsu::lpc17xx::Gpio lcd_cs(2, 7);
 
 constexpr units::frequency::hertz_t kLcdFrequency = 12_MHz;
-sjsu::St7735 lcd(spi0, kLcdFrequency, lcd_rst, lcd_cs, lcd_dc);
+constexpr size_t kLcdScreenWidth                  = 128;
+constexpr size_t kLcdScreenHeight                 = 160;
+sjsu::St7735 lcd(spi0,
+                 kLcdFrequency,
+                 lcd_rst,
+                 lcd_cs,
+                 lcd_dc,
+                 kLcdScreenWidth,
+                 kLcdScreenHeight);
 
 /// Configures the CPU clock to run at 96 MHz.
 void ConfigurateSystemClock()
 {
-  auto system_controller =
-      sjsu::lpc17xx::SystemController::GetPlatformController();
-  auto clock_configuration = system_controller.GetClockConfiguration<
+  auto & system_controller   = sjsu::SystemController::GetPlatformController();
+  auto & clock_configuration = system_controller.GetClockConfiguration<
       sjsu::lpc17xx::SystemController::ClockConfiguration_t>();
   clock_configuration.cpu.divider = 3;
 
@@ -36,8 +43,7 @@ int main()
 
   ConfigurateSystemClock();
 
-  SJ2_ASSERT_FATAL(lcd.Initialize() == sjsu::Status::kSuccess,
-                   "Failed to initialize St7735");
+  lcd.Initialize();
 
   while (true)
   {

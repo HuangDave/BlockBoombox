@@ -28,28 +28,31 @@ class St7735 final : public PixelDisplay
     kSetWriteDirection = 0x36,
   };
 
-  inline static constexpr size_t kMaxScreenWidth  = 128;
-  inline static constexpr size_t kMaxScreenHeight = 160;
-
   /// @param spi           SPI bus used to control the device.
   /// @param spi_frequency Frequency of SPI, should be between 1Mhz - 12Mhz.
   /// @param rst_pin       Reset (active low).
   /// @param cs_pin        Chip select (active low).
   /// @param dc_pin        Data/Command select (active low).
+  /// @param screen_width
+  /// @param screen_height
   explicit St7735(sjsu::Spi & spi,
                   units::frequency::hertz_t spi_frequency,
                   sjsu::Gpio & rst_pin,
                   sjsu::Gpio & cs_pin,
-                  sjsu::Gpio & dc_pin)
+                  sjsu::Gpio & dc_pin,
+                  size_t screen_width,
+                  size_t screen_height)
       : spi_(spi),
         kSpiFrequency(spi_frequency),
         rst_pin_(rst_pin),
         cs_pin_(cs_pin),
-        dc_pin_(dc_pin)
+        dc_pin_(dc_pin),
+        kScreenWidth(screen_width),
+        kScreenHeight(screen_height)
   {
   }
-  /// @returns The initialization status.
-  Status Initialize() override
+
+  void Initialize() override
   {
     rst_pin_.SetAsOutput();
     rst_pin_.SetHigh();
@@ -60,23 +63,19 @@ class St7735 final : public PixelDisplay
 
     spi_.SetClock(kSpiFrequency);
     spi_.SetDataSize(sjsu::Spi::DataSize::kEight);
-    const Status kStatus = spi_.Initialize();
-    if (kStatus != Status::kSuccess)
-    {
-      return kStatus;
-    }
+    spi_.Initialize();
+
     Reset();
-    return kStatus;
   }
 
   size_t GetWidth() override
   {
-    return kMaxScreenWidth;
+    return kScreenWidth;
   }
 
   size_t GetHeight() override
   {
-    return kMaxScreenHeight;
+    return kScreenHeight;
   }
 
   Color_t AvailableColors() override
@@ -125,7 +124,7 @@ class St7735 final : public PixelDisplay
 
   void Clear() override
   {
-    FillFrame(graphics::Frame_t(0, 0, kMaxScreenWidth, kMaxScreenHeight),
+    FillFrame(graphics::Frame_t(0, 0, kScreenWidth, kScreenHeight),
               graphics::kWhite);
   }
 
@@ -135,8 +134,7 @@ class St7735 final : public PixelDisplay
     WriteColor(color, frame.size.width * frame.size.height);
   }
 
-  void DrawBitmap(graphics::Frame_t frame,
-                  const graphics::Color_t ** bitmap)
+  void DrawBitmap(graphics::Frame_t frame, const graphics::Color_t ** bitmap)
   {
     SetDrawAddress(frame);
     for (uint16_t y = 0; y < frame.size.width; y++)
@@ -148,8 +146,16 @@ class St7735 final : public PixelDisplay
     }
   }
 
-  void DrawPixel(int32_t x, int32_t y, Color_t color) override {}
-  void Update() override {}
+  void DrawPixel([[maybe_unused]] int32_t x,
+                 [[maybe_unused]] int32_t y,
+                 [[maybe_unused]] Color_t color) override
+  {
+  }
+
+  void Update() override
+  {
+    // TODO: implement
+  }
 
  private:
   void WriteCommand(Command command) const
@@ -211,5 +217,8 @@ class St7735 final : public PixelDisplay
   const sjsu::Gpio & rst_pin_;
   const sjsu::Gpio & cs_pin_;
   const sjsu::Gpio & dc_pin_;
+
+  const size_t kScreenWidth;
+  const size_t kScreenHeight;
 };
 }  // namespace sjsu
