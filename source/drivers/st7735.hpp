@@ -7,9 +7,7 @@
 
 #include "graphics/graphics.hpp"
 
-namespace sjsu
-{
-class St7735 final : public PixelDisplay
+class St7735 final : public sjsu::PixelDisplay
 {
  public:
   enum class Command : uint8_t
@@ -86,19 +84,19 @@ class St7735 final : public PixelDisplay
   void Sleep(bool on = true)
   {
     WriteCommand(on ? Command::kSleepIn : Command::kSleepOut);
-    Delay(2ms);
+    sjsu::Delay(2ms);
   }
 
   void Enable() override
   {
     WriteCommand(Command::kDisplayOn);
-    Delay(100us);
+    sjsu::Delay(100us);
   }
 
   void Disable() override
   {
     WriteCommand(Command::kDisplayOff);
-    Delay(100us);
+    sjsu::Delay(100us);
   }
 
   void Reset()
@@ -106,9 +104,9 @@ class St7735 final : public PixelDisplay
     cs_pin_.SetLow();
     {
       rst_pin_.SetLow();
-      Delay(1ms);
+      sjsu::Delay(1ms);
       rst_pin_.SetHigh();
-      Delay(1ms);
+      sjsu::Delay(1ms);
     }
     cs_pin_.SetHigh();
     // the device is in sleep mode and display is off after a hardware reset
@@ -163,7 +161,7 @@ class St7735 final : public PixelDisplay
     dc_pin_.SetLow();
     cs_pin_.SetLow();
     {
-      spi_.Transfer(Value(command));
+      spi_.Transfer(sjsu::Value(command));
     }
     cs_pin_.SetHigh();
     dc_pin_.SetHigh();
@@ -221,4 +219,3 @@ class St7735 final : public PixelDisplay
   const size_t kScreenWidth;
   const size_t kScreenHeight;
 };
-}  // namespace sjsu

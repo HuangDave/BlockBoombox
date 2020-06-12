@@ -4,7 +4,7 @@
 #include "utility/log.hpp"
 #include "utility/time.hpp"
 
-#include "st7735.hpp"
+#include "drivers/st7735.hpp"
 
 // private namespace
 namespace
@@ -17,13 +17,13 @@ sjsu::lpc17xx::Gpio lcd_cs(2, 7);
 constexpr units::frequency::hertz_t kLcdFrequency = 12_MHz;
 constexpr size_t kLcdScreenWidth                  = 128;
 constexpr size_t kLcdScreenHeight                 = 160;
-sjsu::St7735 lcd(spi0,
-                 kLcdFrequency,
-                 lcd_rst,
-                 lcd_cs,
-                 lcd_dc,
-                 kLcdScreenWidth,
-                 kLcdScreenHeight);
+St7735 lcd(spi0,
+           kLcdFrequency,
+           lcd_rst,
+           lcd_cs,
+           lcd_dc,
+           kLcdScreenWidth,
+           kLcdScreenHeight);
 
 /// Configures the CPU clock to run at 96 MHz.
 void ConfigurateSystemClock()
@@ -47,9 +47,8 @@ int main()
 
   while (true)
   {
-    lcd.FillFrame(graphics::Frame_t(0, 0, lcd.GetWidth(), 10),
-    graphics::kRed); lcd.FillFrame(graphics::Frame_t(0, 20, lcd.GetWidth(),
-    10),
+    lcd.FillFrame(graphics::Frame_t(0, 0, lcd.GetWidth(), 10), graphics::kRed);
+    lcd.FillFrame(graphics::Frame_t(0, 20, lcd.GetWidth(), 10),
                   graphics::kGreen);
     lcd.FillFrame(graphics::Frame_t(0, 40, lcd.GetWidth(), 10),
                   graphics::kBlue);
