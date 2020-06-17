@@ -1,3 +1,5 @@
+#pragma once
+
 #include "L1_Peripheral/gpio.hpp"
 #include "L1_Peripheral/spi.hpp"
 #include "L2_HAL/displays/pixel_display.hpp"
