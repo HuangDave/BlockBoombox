@@ -5,6 +5,7 @@
 #include "utility/time.hpp"
 
 #include "drivers/st7735.hpp"
+#include "drivers/vs1053b.hpp"
 
 // private namespace
 namespace
@@ -13,6 +14,26 @@ sjsu::lpc17xx::Spi spi0(sjsu::lpc17xx::SpiBus::kSpi0);
 sjsu::lpc17xx::Gpio lcd_dc(0, 1);
 sjsu::lpc17xx::Gpio lcd_rst(0, 0);
 sjsu::lpc17xx::Gpio lcd_cs(2, 7);
+
+sjsu::lpc17xx::Spi spi1(sjsu::lpc17xx::SpiBus::kSpi1);
+// NOTES: connections on board
+// o    y    g    b
+// 0.26 1.31 1.30 1.29
+//
+// | y | b |
+// |---|---|
+// | o | g |
+sjsu::lpc17xx::Gpio rst(1, 30);
+sjsu::lpc17xx::Gpio cs(1, 31);
+sjsu::lpc17xx::Gpio dcs(0, 26);
+sjsu::lpc17xx::Gpio dreq(1, 29);
+Vs1053b mp3_player(spi1,
+                   {
+                       .rst  = rst,
+                       .cs   = cs,
+                       .dcs  = dcs,
+                       .dreq = dreq,
+                   });
 
 constexpr units::frequency::hertz_t kLcdFrequency = 12_MHz;
 constexpr size_t kLcdScreenWidth                  = 128;
@@ -43,6 +64,7 @@ int main()
 
   ConfigurateSystemClock();
 
+  mp3_player.Initialize();
   lcd.Initialize();
 
   while (true)
