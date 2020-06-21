@@ -4,6 +4,7 @@
 #include "utility/log.hpp"
 #include "utility/time.hpp"
 
+#include "mp3_player_task.hpp"
 #include "drivers/st7735.hpp"
 #include "drivers/vs1053b.hpp"
 
