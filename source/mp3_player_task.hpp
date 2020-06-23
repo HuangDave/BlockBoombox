@@ -23,6 +23,12 @@ class Mp3PlayerTask final : public sjsu::rtos::Task<512>,
 
   bool Setup() override
   {
+    FATFS fat_fs;
+    if (f_mount(&fat_fs, "", 0) != 0)
+    {
+      sjsu::LogError("Failed to mount SD Card");
+      return false;
+    }
     return true;
   }
 
@@ -42,24 +48,29 @@ class Mp3PlayerTask final : public sjsu::rtos::Task<512>,
   }
 
  private:
-  void FetchSongs()
+  FRESULT FetchSongs()
   {
-    // TODO: implement
+    static FILINFO fno;
+    FRESULT res;
+    DIR dir;
+
+    res = f_findfirst(&dir, &fno, "", "*.mp3");
+    while (res == FR_OK && fno.fname[0])
+    {
+      if (fno.fname[0] != '.')
+      {
+        printf("%s\n", fno.fname);
+      }
+      res = f_findnext(&dir, &fno);
+    }
+
+    f_closedir(&dir);
+
+    return res;
   }
 
   inline static constexpr size_t kStreamQueueLength = 1024;
 
   const Mp3Decoder & decoder_;
   rtos::Queue<uint8_t, kStreamQueueLength> stream_queue_;
-};
-
-class FetchTask final : public sjsu::rtos::Task<256>
-{
- public:
-  bool Run() override
-  {
-    return true;
-  }
-
- private:
 };

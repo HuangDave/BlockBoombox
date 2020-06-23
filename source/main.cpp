@@ -1,6 +1,8 @@
 #include "L0_Platform/startup.hpp"
 #include "L1_Peripheral/lpc17xx/gpio.hpp"
 #include "L1_Peripheral/lpc17xx/spi.hpp"
+#include "L2_HAL/memory/sd.hpp"
+#include "L3_Application/file_io/fatfs.hpp"
 #include "utility/log.hpp"
 #include "utility/time.hpp"
 
@@ -17,6 +19,10 @@ sjsu::lpc17xx::Gpio lcd_rst(0, 0);
 sjsu::lpc17xx::Gpio lcd_cs(2, 7);
 
 sjsu::lpc17xx::Spi spi1(sjsu::lpc17xx::SpiBus::kSpi1);
+
+// -----------------------------------------------------------------------------
+//                                MP3 Decoder
+// -----------------------------------------------------------------------------
 // NOTES: connections on board
 // o    y    g    b
 // 0.26 1.31 1.30 1.29
@@ -36,6 +42,9 @@ Vs1053b mp3_player(spi1,
                        .dreq = dreq,
                    });
 
+// -----------------------------------------------------------------------------
+//                                TFT LCD
+// -----------------------------------------------------------------------------
 constexpr units::frequency::hertz_t kLcdFrequency = 12_MHz;
 constexpr size_t kLcdScreenWidth                  = 128;
 constexpr size_t kLcdScreenHeight                 = 160;
@@ -57,6 +66,24 @@ void ConfigurateSystemClock()
 
   sjsu::InitializePlatform();
 }
+
+void TestLcd()
+{
+  lcd.FillFrame(graphics::Frame_t(0, 0, lcd.GetWidth(), 10), graphics::kRed);
+  lcd.FillFrame(graphics::Frame_t(0, 20, lcd.GetWidth(), 10), graphics::kGreen);
+  lcd.FillFrame(graphics::Frame_t(0, 40, lcd.GetWidth(), 10), graphics::kBlue);
+  sjsu::Delay(1s);
+  lcd.FillFrame(graphics::Frame_t(0, 0, lcd.GetWidth(), 10), graphics::kWhite);
+  lcd.FillFrame(graphics::Frame_t(0, 20, lcd.GetWidth(), 10), graphics::kWhite);
+  lcd.FillFrame(graphics::Frame_t(0, 40, lcd.GetWidth(), 10), graphics::kWhite);
+}
+
+// -----------------------------------------------------------------------------
+//                                  SD Card
+// -----------------------------------------------------------------------------
+sjsu::lpc17xx::Gpio sd_cs(1, 25);
+sjsu::lpc17xx::Gpio sd_cd(1, 26);
+sjsu::Sd sd_card(spi1, sd_cs, sd_cd);
 }  // namespace
 
 int main()
@@ -65,25 +92,17 @@ int main()
 
   ConfigurateSystemClock();
 
-  mp3_player.Initialize();
-  lcd.Initialize();
+  // mp3_player.Initialize();
+  // lcd.Initialize();
+
+  if (!sjsu::RegisterFatFsDrive(&sd_card))
+  {
+    return -1;
+  }
 
   while (true)
   {
-    lcd.FillFrame(graphics::Frame_t(0, 0, lcd.GetWidth(), 10), graphics::kRed);
-    lcd.FillFrame(graphics::Frame_t(0, 20, lcd.GetWidth(), 10),
-                  graphics::kGreen);
-    lcd.FillFrame(graphics::Frame_t(0, 40, lcd.GetWidth(), 10),
-                  graphics::kBlue);
-
-    sjsu::Delay(1s);
-
-    lcd.FillFrame(graphics::Frame_t(0, 0, lcd.GetWidth(), 10),
-                  graphics::kWhite);
-    lcd.FillFrame(graphics::Frame_t(0, 20, lcd.GetWidth(), 10),
-                  graphics::kWhite);
-    lcd.FillFrame(graphics::Frame_t(0, 40, lcd.GetWidth(), 10),
-                  graphics::kWhite);
+    TestLcd();
   }
 
   return 0;
