@@ -45,7 +45,7 @@ class Queue
   }
 
  private:
-  T queue_storage_area_[kQueueSize];
+  uint8_t queue_storage_area_[kQueueSize * sizeof(T)];
   StaticQueue_t static_queue_buffer_;
   QueueHandle_t queue_handle_;
 };
