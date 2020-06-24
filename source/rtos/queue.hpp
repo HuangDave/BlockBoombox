@@ -3,7 +3,7 @@
 #include "FreeRTOS.h"
 #include "queue.h"
 
-namespace rtos
+namespace freertos
 {
 /// Wrapper class for FreeRTOS static queue.
 ///
