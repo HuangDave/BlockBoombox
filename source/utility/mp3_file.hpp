@@ -29,9 +29,12 @@ struct Idv3Tag_t
   uint8_t genre;
 };
 
+/// An object used to store a MP3 file's file path, size, and metadata.
 class Mp3File
 {
  public:
+  /// @param file_path The MP3 file's file path.
+  /// @param file_size The size of the MP3 file in bytes.
   constexpr Mp3File(const char * file_path, size_t file_size)
       : file_path_(file_path), file_size_(file_size)
   {
