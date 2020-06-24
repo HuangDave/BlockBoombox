@@ -4,13 +4,14 @@
 
 #include "L3_Application/task.hpp"
 
-#include "rtos/queue.hpp"
 #include "drivers/mp3_decoder.hpp"
+#include "utility/mp3_file.hpp"
+#include "utility/queue.hpp"
 
 namespace
 {
 constexpr size_t kSongQueueLength = 2;
-freertos::Queue<Mp3File_t *, kSongQueueLength> song_queue;
+freertos::Queue<mp3::Mp3File *, kSongQueueLength> song_queue;
 
 constexpr size_t kStreamQueueLength = 1024;
 freertos::Queue<uint8_t, kStreamQueueLength> stream_queue;
@@ -37,7 +38,7 @@ class Mp3PlayerTask final : public sjsu::rtos::Task<512>,
   bool Setup() override
   {
     memset(song_list_, '\0',
-           sizeof(char) * kMaxSongListCount * kMaxSongNameLength);
+           sizeof(char) * kMaxSongListCount * kMaxSongPathLength);
     return true;
   }
 
@@ -97,9 +98,9 @@ class Mp3PlayerTask final : public sjsu::rtos::Task<512>,
   /// TODO: using max song count of 28 for now, should increase the number of
   ///       paths from 28 to ??
   static constexpr size_t kMaxSongListCount  = 28;
-  static constexpr size_t kMaxSongNameLength = 256;
+  static constexpr size_t kMaxSongPathLength = 256;
 
   const Mp3Decoder & decoder_;
-  char song_list_[kMaxSongListCount][kMaxSongNameLength];
+  char song_list_[kMaxSongListCount][kMaxSongPathLength];
   size_t song_list_count_;
 };
