@@ -1,9 +1,20 @@
 #pragma once
 
+#include <string.h>
+
 #include "L3_Application/task.hpp"
 
 #include "rtos/queue.hpp"
 #include "drivers/mp3_decoder.hpp"
+
+namespace
+{
+constexpr size_t kSongQueueLength = 2;
+freertos::Queue<Mp3File_t *, kSongQueueLength> song_queue;
+
+constexpr size_t kStreamQueueLength = 1024;
+freertos::Queue<uint8_t, kStreamQueueLength> stream_queue;
+}  // namespace
 
 class Mp3PlayerInterface
 {
@@ -17,18 +28,16 @@ class Mp3PlayerTask final : public sjsu::rtos::Task<512>,
 {
  public:
   explicit Mp3PlayerTask(Mp3Decoder & decoder)
-      : Task("MP3_Player_Task", sjsu::rtos::Priority::kLow), decoder_(decoder)
+      : Task("MP3_Player_Task", sjsu::rtos::Priority::kLow),
+        decoder_(decoder),
+        song_list_count_(0)
   {
   }
 
   bool Setup() override
   {
-    FATFS fat_fs;
-    if (f_mount(&fat_fs, "", 0) != 0)
-    {
-      sjsu::LogError("Failed to mount SD Card");
-      return false;
-    }
+    memset(song_list_, '\0',
+           sizeof(char) * kMaxSongListCount * kMaxSongNameLength);
     return true;
   }
 
@@ -47,30 +56,50 @@ class Mp3PlayerTask final : public sjsu::rtos::Task<512>,
     decoder_.ResumePlayback();
   }
 
- private:
   FRESULT FetchSongs()
   {
     static FILINFO fno;
     FRESULT res;
     DIR dir;
 
-    res = f_findfirst(&dir, &fno, "", "*.mp3");
+    song_list_count_ = 0;
+    res              = f_findfirst(&dir, &fno, "", "*.mp3");
     while (res == FR_OK && fno.fname[0])
     {
       if (fno.fname[0] != '.')
       {
-        printf("%s\n", fno.fname);
+        sjsu::LogDebug("Adding: %s\n", fno.fname);
+        strcpy(song_list_[song_list_count_++], fno.fname);
+      }
+
+      // TODO: should track position and fetch more when needed instead of
+      //       just stopping
+      if (song_list_count_ < kMaxSongListCount)
+      {
+        break;
       }
       res = f_findnext(&dir, &fno);
     }
-
     f_closedir(&dir);
 
+    sjsu::LogDebug("Current Song List:");
+    for (size_t i = 0; i < kMaxSongListCount; i++)
+    {
+      if (song_list_[i][0] != '\0')
+      {
+        sjsu::LogDebug("%s", song_list_[i]);
+      }
+    }
     return res;
   }
 
-  inline static constexpr size_t kStreamQueueLength = 1024;
+ private:
+  /// TODO: using max song count of 28 for now, should increase the number of
+  ///       paths from 28 to ??
+  static constexpr size_t kMaxSongListCount  = 28;
+  static constexpr size_t kMaxSongNameLength = 256;
 
   const Mp3Decoder & decoder_;
-  rtos::Queue<uint8_t, kStreamQueueLength> stream_queue_;
+  char song_list_[kMaxSongListCount][kMaxSongNameLength];
+  size_t song_list_count_;
 };
