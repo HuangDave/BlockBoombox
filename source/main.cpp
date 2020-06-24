@@ -84,6 +84,8 @@ void TestLcd()
 sjsu::lpc17xx::Gpio sd_cs(1, 25);
 sjsu::lpc17xx::Gpio sd_cd(1, 26);
 sjsu::Sd sd_card(spi1, sd_cs, sd_cd);
+
+Mp3PlayerTask mp3_player_task(mp3_player);
 }  // namespace
 
 int main()
@@ -100,9 +102,19 @@ int main()
     return -1;
   }
 
+  FATFS fat_fs;
+  if (f_mount(&fat_fs, "", 0) != 0)
+  {
+    sjsu::LogError("Failed to mount SD Card");
+    return false;
+  }
+
+  // mp3_player_task.Setup();
+  mp3_player_task.FetchSongs();
+
   while (true)
   {
-    TestLcd();
+    // TestLcd();
   }
 
   return 0;
