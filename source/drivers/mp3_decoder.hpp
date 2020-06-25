@@ -18,6 +18,9 @@ class Mp3Decoder
   /// Resume the music player.
   virtual void ResumePlayback() const = 0;
 
+  /// Reset decode time back to 0:00.
+  virtual void ClearDecodeTime() const = 0;
+
   virtual void Buffer(const uint8_t * data, size_t length) const = 0;
 
   /// @param percentage Volume percentage ranging from 0.0 to 1.0, where 1.0 is

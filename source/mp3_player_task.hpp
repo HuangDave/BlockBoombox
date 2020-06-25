@@ -20,11 +20,11 @@ freertos::Queue<uint8_t, kStreamQueueLength> stream_queue;
 class Mp3PlayerInterface
 {
  public:
-  virtual void Pause() = 0;
-  virtual void Play()  = 0;
+  virtual void Pause()              = 0;
+  virtual void Play(uint32_t index) = 0;
 };
 
-class Mp3PlayerTask final : public sjsu::rtos::Task<512>,
+class Mp3PlayerTask final : public sjsu::rtos::Task<1024>,
                             public virtual Mp3PlayerInterface
 {
  public:
@@ -33,13 +33,6 @@ class Mp3PlayerTask final : public sjsu::rtos::Task<512>,
         decoder_(decoder),
         song_list_count_(0)
   {
-  }
-
-  bool Setup() override
-  {
-    memset(song_list_, '\0',
-           sizeof(char) * kMaxSongListCount * kMaxSongPathLength);
-    return true;
   }
 
   bool Run() override
@@ -52,9 +45,30 @@ class Mp3PlayerTask final : public sjsu::rtos::Task<512>,
     decoder_.PausePlayback();
   }
 
-  void Play() override
+  void Play(uint32_t index) override
   {
-    decoder_.ResumePlayback();
+    constexpr size_t kBufferSize = 2048;
+    mp3::Mp3File & song          = song_list_[index];
+
+    decoder_.EnablePlayback();
+
+    FIL fil;
+    printf("Playing: %s\n", song.GetFilePath());
+
+    f_open(&fil, song.GetFilePath(), FA_READ);
+
+    for (size_t i = 0; i < song.GetFileSize() / kBufferSize; i++)
+    {
+      uint8_t data[kBufferSize];
+      UINT bytes_read = 0;
+      // f_lseek(&fil, i * kBufferSize);
+      f_read(&fil, data, kBufferSize, &bytes_read);
+
+      decoder_.Buffer(data, bytes_read);
+      // printf("Bytes read: %d\n", bytes_read);
+    }
+
+    f_close(&fil);
   }
 
   FRESULT FetchSongs()
@@ -70,12 +84,13 @@ class Mp3PlayerTask final : public sjsu::rtos::Task<512>,
       if (fno.fname[0] != '.')
       {
         sjsu::LogDebug("Adding: %s\n", fno.fname);
-        strcpy(song_list_[song_list_count_++], fno.fname);
+        mp3::Mp3File mp3_file(fno.fname, fno.fsize);
+        song_list_[song_list_count_++] = mp3_file;
       }
 
       // TODO: should track position and fetch more when needed instead of
       //       just stopping
-      if (song_list_count_ < kMaxSongListCount)
+      if (song_list_count_ >= kMaxSongListCount)
       {
         break;
       }
@@ -83,13 +98,11 @@ class Mp3PlayerTask final : public sjsu::rtos::Task<512>,
     }
     f_closedir(&dir);
 
+    // TODO: remove this
     sjsu::LogDebug("Current Song List:");
-    for (size_t i = 0; i < kMaxSongListCount; i++)
+    for (size_t i = 0; i < song_list_count_; i++)
     {
-      if (song_list_[i][0] != '\0')
-      {
-        sjsu::LogDebug("%s", song_list_[i]);
-      }
+      sjsu::LogInfo("%s", song_list_[i].GetFilePath());
     }
     return res;
   }
@@ -97,10 +110,9 @@ class Mp3PlayerTask final : public sjsu::rtos::Task<512>,
  private:
   /// TODO: using max song count of 28 for now, should increase the number of
   ///       paths from 28 to ??
-  static constexpr size_t kMaxSongListCount  = 28;
-  static constexpr size_t kMaxSongPathLength = 256;
+  static constexpr size_t kMaxSongListCount = 28;
 
   const Mp3Decoder & decoder_;
-  char song_list_[kMaxSongListCount][kMaxSongPathLength];
+  mp3::Mp3File song_list_[kMaxSongListCount];
   size_t song_list_count_;
 };
