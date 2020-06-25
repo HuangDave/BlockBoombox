@@ -4,6 +4,7 @@
 
 #include "L1_Peripheral/gpio.hpp"
 #include "L1_Peripheral/spi.hpp"
+#include "utility/enum.hpp"
 #include "utility/time.hpp"
 
 #include "mp3_decoder.hpp"
@@ -63,6 +64,36 @@ class Vs1053b : public Mp3Decoder
 
   /// @see 9.6.1 SCI_MODE (RW)
   ///      https://cdn-shop.adafruit.com/datasheets/vs1053.pdf#page=38
+  class SciModeRegister final : public sjsu::bit::Value<uint16_t>
+  {
+   public:
+    /// Software Reset: 0 = no reset, 1 = reset.
+    static constexpr auto kResetMask = sjsu::bit::MaskFromRange(2);
+    /// Cancel decoding current file
+    static constexpr auto kCancelMask = sjsu::bit::MaskFromRange(3);
+    /// Stream mode: 0 = false, 1 = true
+    static constexpr auto kStreamModeMask = sjsu::bit::MaskFromRange(6);
+    /// SPI mode: 0 = VS1001 Compatibility Mode, 1 = VS10xx New Mode
+    static constexpr auto kSdiNewMask = sjsu::bit::MaskFromRange(11);
+    /// MIC/LINE1 selector: 0 = MICP, 1 = LINE1
+    static constexpr auto kLine1Mask = sjsu::bit::MaskFromRange(14);
+    /// Input clock range: 0 = 12-13MHz, 1 = 24-26MHz
+    static constexpr auto kClockRangeMask = sjsu::bit::MaskFromRange(15);
+
+    /// @returns The default configuration for the SCI mode register (0x4800).
+    static constexpr SciModeRegister Default()
+    {
+      auto value = SciModeRegister();
+      value.Set(kSdiNewMask).Set(kLine1Mask);
+      return value;
+    }
+
+    explicit constexpr SciModeRegister(uint16_t value = 0x0000) : Value(value)
+    {
+    }
+  };
+
+  /*
   struct SciModeRegister
   {
     /// Differential: 0 = normal in-phase audio, 1 = left channel inverted.
@@ -111,7 +142,7 @@ class Vs1053b : public Mp3Decoder
 
     static constexpr uint16_t kModeDefault =
         sjsu::bit::Value().Set(kSdiNewMask).Set(kLine1Mask);
-  };
+  }; */
 
   enum class SciClockOption : uint16_t
   {
@@ -147,8 +178,8 @@ class Vs1053b : public Mp3Decoder
     /// Data chip select pin, active low. This pin is pulled low by the driver
     /// when writing to the SDI register.
     sjsu::Gpio & dcs;
-    /// Data request pin. This pin is pulled high by the device when processing
-    /// an operation.
+    /// Data request input pin. This pin is pulled high by the device when
+    /// processing an operation.
     sjsu::Gpio & dreq;
   };
 
@@ -159,8 +190,8 @@ class Vs1053b : public Mp3Decoder
     { 0, 0, 0, 0 }
   };
 
-  /// @param spi
-  /// @param pins
+  /// @param spi The SPI bus used to drive the device.
+  /// @param pins The various controls pins for the devies.
   explicit Vs1053b(sjsu::Spi & spi, ControlPins_t pins) : spi_(spi), pins_(pins)
   {
   }
@@ -176,12 +207,27 @@ class Vs1053b : public Mp3Decoder
 
     pins_.dreq.SetAsInput();
 
-    constexpr auto kSpiFrequency = 12_MHz;
-    spi_.SetClock(kSpiFrequency);
+    // Initial SPI speed needs to be 3 MHz
+    spi_.SetClock(3_MHz);
     spi_.SetDataSize(sjsu::Spi::DataSize::kEight);
     spi_.Initialize();
 
-    // TODO: send SCI mode configuration and configure the internal clock
+    Reset();
+
+    WriteSci(SciRegister::kClockF,
+             { sjsu::Value(SciClockOption::kMultiplyBy4) });
+
+    while (!IsReady())
+    {
+      continue;
+    }
+    // Can now clock the SPI clock higher once the multiplier is set.
+    // The internal device clock is now CLKI = 4 * ~12.288 MHz = ~49.152 MHz
+    //    For SCI r/w, a SPI clock CLKI / 7 = ~7 MHz is desired.
+    //    For SDI write, a SPI clock CLKI / 4 ~12 MHz is desired.
+
+    SetVolume(0.8f);
+    printf("VS1053b Initialized\n");
   }
 
   /// @see Data Request Pin DREQ
@@ -209,7 +255,7 @@ class Vs1053b : public Mp3Decoder
   /// register.
   void SoftwareReset() const
   {
-    constexpr uint16_t reset_command = sjsu::bit::Value<uint16_t>()
+    constexpr uint16_t reset_command = SciModeRegister()
                                            .Set(SciModeRegister::kSdiNewMask)
                                            .Set(SciModeRegister::kResetMask);
 
@@ -223,28 +269,25 @@ class Vs1053b : public Mp3Decoder
   }
 
   // ---------------------------------------------------------------------------
-  //
   //                  Mp3Player Interface Implementation
-  //
   // ---------------------------------------------------------------------------
 
+  /// Start audio decoding from 0:00.
   void EnablePlayback() const override
   {
     ResumePlayback();
     // Automatic Resync selector
     WriteSci(SciRegister::kWRamAddr, { 0x1E29 });
     WriteSci(SciRegister::kWRam, { 0x0000 });
-    // reset current decode time to 0:00, this is done by writing 0x0 to the SCI
-    // decode time register twice
-    WriteSci(SciRegister::kDecodeTime, { 0x0000 });
-    WriteSci(SciRegister::kDecodeTime, { 0x0000 });
+    ClearDecodeTime();
   }
 
+  /// Pause audio decoding. Note that when decoding is resumes, the audio will
+  /// be start from the point it was paused.
   void PausePlayback() const override
   {
     constexpr uint16_t kStreamModeCancel =
-        sjsu::bit::Value(SciModeRegister::kModeDefault)
-            .Set(SciModeRegister::kCancelMask);
+        SciModeRegister::Default().Set(SciModeRegister::kCancelMask);
     WriteSci(SciRegister::kMode, { kStreamModeCancel });
 
     while (!IsReady() || sjsu::bit::Read(ReadRegister(SciRegister::kMode),
@@ -254,14 +297,23 @@ class Vs1053b : public Mp3Decoder
     }
   }
 
+  /// Resume audio decoding.
   void ResumePlayback() const override
   {
     constexpr uint16_t kAuDataOption =
         sjsu::Value(SciAudioDataOption::kStereo) |
         sjsu::Value(SciAudioDataOption::k44100);
 
-    WriteSci(SciRegister::kMode, { SciModeRegister::kModeDefault });
+    WriteSci(SciRegister::kMode, { SciModeRegister::Default() });
     WriteSci(SciRegister::kAuData, { kAuDataOption });
+  }
+
+  // Resets the current decode time to 0:00, this is done by writing 0x0 to the
+  // SCI decode time register twice.
+  void ClearDecodeTime() const override
+  {
+    WriteSci(SciRegister::kDecodeTime, { 0x0000 });
+    WriteSci(SciRegister::kDecodeTime, { 0x0000 });
   }
 
   /// @see 9.4 Serial Data Interface (SDI)
@@ -270,17 +322,15 @@ class Vs1053b : public Mp3Decoder
   /// @note Need to wait for DREQ
   void Buffer(const uint8_t * data, size_t length) const override
   {
-    pins_.dcs.SetLow();
+    constexpr size_t kBufferSize = 32;
+    for (size_t i = 0; i < length / kBufferSize; i++)
     {
-      // TODO: need to configure SCK for SDI write, see datasheet
-      for (size_t i = 0; i < length; i++)
-      {
-        spi_.Transfer(data[i]);
-      }
+      WriteSdi(data + (i * kBufferSize), kBufferSize);
     }
-    pins_.dcs.SetHigh();
   }
 
+  /// Sets the volume for both L and R audio channels.
+  ///
   /// @param percentage Volume percentage ranging from 0.0 to 1.0, where 1.0 is
   ///                   100 percent.
   void SetVolume(float percentage) const override
@@ -292,44 +342,86 @@ class Vs1053b : public Mp3Decoder
     // higher 8-bits is for the left channel and the lower 8-bits are for the
     // right channel.
     uint16_t data = static_cast<uint16_t>(volume << 8) | volume;
-    WriteSci(SciRegister::kVolume, { data });
+    WriteSci(SciRegister::kVolume, { 0x2222 });
   }
 
- private:
+  /// Reads a desired SCI register.
+  ///
+  /// @param address The address of the SCI register to read.
+  /// @return The 16-bit register data.
   uint16_t ReadRegister(SciRegister address) const
   {
-    uint16_t data;
+    while (!IsReady())
+    {
+      continue;
+    }
+
+    spi_.SetClock(3_MHz);
+
+    uint16_t data = 0x0;
     pins_.cs.SetLow();
     {
       spi_.Transfer(sjsu::Value(Operation::kRead));
       spi_.Transfer(sjsu::Value(address));
-      data = spi_.Transfer(0x00);
+      data = static_cast<uint16_t>(data | (spi_.Transfer(0x00) << 8));
+      data = data | spi_.Transfer(0x00);
     }
     pins_.cs.SetHigh();
     return data;
   }
 
+  /// Writes a byte(s) to the specified SCI register.
+  ///
   /// @see 9.5 Serial Control Interface (SCI)
   ///      https://cdn-shop.adafruit.com/datasheets/vs1053.pdf#page=37
   ///
   /// @note Need to wait for DREQ
+  ///
+  /// @param address The address of the SCI register to write to.
+  /// @param data The data to write.
   void WriteSci(SciRegister address,
                 const std::initializer_list<uint16_t> data) const
   {
+    while (!IsReady())
+    {
+      continue;
+    }
+
+    spi_.SetClock(3_MHz);
     pins_.cs.SetLow();
     {
-      // TODO: need to configure SCK for SCI write, see datasheet
       spi_.Transfer(sjsu::Value(Operation::kWrite));
       spi_.Transfer(sjsu::Value(address));
 
       for (uint16_t word : data)
       {
-        spi_.Transfer(word);
+        spi_.Transfer(static_cast<uint8_t>(word >> 8));
+        spi_.Transfer(word & 0xFF);
       }
     }
     pins_.cs.SetHigh();
   }
 
+  void WriteSdi(const uint8_t * data, size_t length) const
+  {
+    while (!IsReady())
+    {
+      continue;
+    }
+
+    spi_.SetClock(12_MHz);
+
+    pins_.dcs.SetLow();
+    {
+      for (size_t i = 0; i < length; i++)
+      {
+        spi_.Transfer(data[i]);
+      }
+    }
+    pins_.dcs.SetHigh();
+  }
+
+ private:
   const sjsu::Spi & spi_;
   const ControlPins_t pins_;
 };
