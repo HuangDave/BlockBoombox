@@ -5,43 +5,98 @@
 
 namespace freertos
 {
-/// Wrapper class for FreeRTOS static queue.
+/// Wrapper class for FreeRTOS statically allocated queue.
 ///
-/// @tparam T
-/// @tparam kQueueSize
+/// @see https://www.freertos.org/xQueueCreateStatic.html
+///
+/// @tparam T The item type.
+/// @tparam kQueueSize The maximum number of items that can be queued.
 template <typename T, size_t kQueueSize>
 class Queue
 {
  public:
-  Queue()
+  /// Create the queue using xQueueCreateStatic().
+  ///
+  /// @param name Optional name used for identifying the queue.
+  Queue(const char * name = nullptr)
   {
-    handle_ = xQueueCreateStatic(
-        kQueueSize, sizeof(T), storage_area_, &buffer_);
+    handle_ =
+        xQueueCreateStatic(kQueueSize, sizeof(T), storage_area_, &buffer_);
+    if (name != nullptr)
+    {
+      vQueueAddToRegistry(handle_, name);
+    }
   }
 
-  BaseType_t Send(T * item, TickType_t timeout)
+  /// @returns The name used to identify the queue.
+  /// @returns nullptr if no name was specified when creating the queue.
+  const char * GetName() const
+  {
+    return pcQueueGetName(handle_);
+  }
+
+  /// Queue an item to the back of the queue.
+  ///
+  /// @param item Pointer to the item to be copied to the queue.
+  /// @param timout The amount of time in ms to block and wait to queue the
+  ///               item.
+  BaseType_t Send(T * item, TickType_t timeout = portMAX_DELAY)
   {
     return xQueueSend(handle_, item, timeout);
   }
 
-  BaseType_t SendToFront(T * item, TickType_t timeout)
+  /// Queue the item to the front of the queue.
+  ///
+  /// @param item Pointer to the item to be copied to the queue.
+  /// @param timout The amount of time in ms to block and wait to queue the
+  ///               item(s).
+  BaseType_t SendToFront(T * item, TickType_t timeout = portMAX_DELAY)
   {
     return xQueueSendToFront(handle_, item, timeout);
   }
 
-  BaseType_t Receive(void * location, TickType_t timeout)
+  /// Copy the item(s) from the front of the queue to the target location.
+  ///
+  /// @param buffer The address of the buffer to hold the copied item.
+  /// @param item Pointer to the item to be copied to the queue.
+  /// @param timout The amount of time in ms to block and wait to queue the
+  ///               item.
+  BaseType_t Receive(void * buffer, TickType_t timeout = portMAX_DELAY)
   {
-    return xQueueReceive(handle_, location, timeout);
+    return xQueueReceive(handle_, buffer, timeout);
   }
 
-  BaseType_t Reset()
+  /// @returns The number of items currently in the queue.
+  size_t GetNumberOfItems() const
   {
-    return xQueueReset(handle_);
+    return uxQueueMessagesWaiting(handle_);
+  }
+
+  /// @returns The number of available space in the queue.
+  size_t GetAvailableSpace() const
+  {
+    return uxQueueSpacesAvailable(handle_);
+  }
+
+  /// Empty the queue.
+  void Reset() const
+  {
+    xQueueReset(handle_);
+  }
+
+  /// Delete the queue and frees the memory allocated to be used by the queue.
+  void Delete() const
+  {
+    vQueueUnregisterQueue(handle_);
+    vQueueDelete(handle_);
   }
 
  private:
+  /// The buffer used to store the queued items.
   uint8_t storage_area_[kQueueSize * sizeof(T)];
+  /// The buffer for the queue data structure.
   StaticQueue_t buffer_;
+  /// The handle used for managing the queue.
   QueueHandle_t handle_;
 };
-}  // namespace rtos
+}  // namespace freertos
