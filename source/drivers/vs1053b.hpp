@@ -7,7 +7,7 @@
 #include "utility/enum.hpp"
 #include "utility/time.hpp"
 
-#include "mp3_decoder.hpp"
+#include "audio_decoder.hpp"
 
 /// TODO: revise documentation
 ///
@@ -25,7 +25,7 @@
 /// Therefore, on reset, the initial SPI clock rate needs to be less
 /// than 12.288Mhz / 4 = ~3MHz. Once the SCI_CLOCKF multiplier is set, the SPI
 /// clock can be changed to faster speeds.
-class Vs1053b : public Mp3Decoder
+class Vs1053b : public AudioDecoder
 {
  public:
   /// @see 7.4 Serial Protocol for Serial Command Interface (SPI / SCI)
@@ -225,9 +225,6 @@ class Vs1053b : public Mp3Decoder
     // The internal device clock is now CLKI = 4 * ~12.288 MHz = ~49.152 MHz
     //    For SCI r/w, a SPI clock CLKI / 7 = ~7 MHz is desired.
     //    For SDI write, a SPI clock CLKI / 4 ~12 MHz is desired.
-
-    SetVolume(0.8f);
-    printf("VS1053b Initialized\n");
   }
 
   /// @see Data Request Pin DREQ
@@ -273,9 +270,9 @@ class Vs1053b : public Mp3Decoder
   // ---------------------------------------------------------------------------
 
   /// Start audio decoding from 0:00.
-  void EnablePlayback() const override
+  void Enable() const override
   {
-    ResumePlayback();
+    Resume();
     // Automatic Resync selector
     WriteSci(SciRegister::kWRamAddr, { 0x1E29 });
     WriteSci(SciRegister::kWRam, { 0x0000 });
@@ -284,7 +281,7 @@ class Vs1053b : public Mp3Decoder
 
   /// Pause audio decoding. Note that when decoding is resumes, the audio will
   /// be start from the point it was paused.
-  void PausePlayback() const override
+  void Pause() const override
   {
     constexpr uint16_t kStreamModeCancel =
         SciModeRegister::Default().Set(SciModeRegister::kCancelMask);
@@ -298,7 +295,7 @@ class Vs1053b : public Mp3Decoder
   }
 
   /// Resume audio decoding.
-  void ResumePlayback() const override
+  void Resume() const override
   {
     constexpr uint16_t kAuDataOption =
         sjsu::Value(SciAudioDataOption::kStereo) |
@@ -336,13 +333,13 @@ class Vs1053b : public Mp3Decoder
   void SetVolume(float percentage) const override
   {
     // Find difference, max volume for device is 0x00 and min volume is 0xFF
-    uint16_t volume =
+    uint16_t difference =
         static_cast<uint8_t>(0xFF - static_cast<uint8_t>(255.0f * percentage));
     // The VS_VOL register contains the 16-bit control for the volume where the
     // higher 8-bits is for the left channel and the lower 8-bits are for the
     // right channel.
-    uint16_t data = static_cast<uint16_t>(volume << 8) | volume;
-    WriteSci(SciRegister::kVolume, { 0x2222 });
+    uint16_t volume = static_cast<uint16_t>(difference << 8) | volume;
+    WriteSci(SciRegister::kVolume, { volume });
   }
 
   /// Reads a desired SCI register.
@@ -388,6 +385,7 @@ class Vs1053b : public Mp3Decoder
     }
 
     spi_.SetClock(3_MHz);
+
     pins_.cs.SetLow();
     {
       spi_.Transfer(sjsu::Value(Operation::kWrite));

@@ -25,7 +25,7 @@ sjsu::lpc17xx::Gpio dreq(2, 4);  // blue
 sjsu::lpc17xx::Gpio rst(2, 5);   // gree
 sjsu::lpc17xx::Gpio cs(2, 6);    // yellow
 sjsu::lpc17xx::Gpio dcs(2, 7);   // orange
-Vs1053b mp3_player(spi0,
+Vs1053b mp3_decoder(spi0,
                    {
                        .rst  = rst,
                        .cs   = cs,
@@ -85,7 +85,7 @@ sjsu::lpc17xx::Gpio sd_cs(1, 25);
 sjsu::lpc17xx::Gpio sd_cd(1, 26);
 sjsu::Sd sd_card(spi1, sd_cs, sd_cd);
 
-Mp3PlayerTask mp3_player_task(mp3_player);
+Mp3PlayerTask mp3_player_task(mp3_decoder);
 }  // namespace
 
 int main()
@@ -106,17 +106,8 @@ int main()
     return false;
   }
 
-  mp3_player.Initialize();
-
-  sjsu::LogInfo("clockf: %x",
-                mp3_player.ReadRegister(Vs1053b::SciRegister::kClockF));
-  sjsu::LogInfo(
-      "mode: %s",
-      std::bitset<16>(mp3_player.ReadRegister(Vs1053b::SciRegister::kMode))
-          .to_string()
-          .c_str());
-  sjsu::LogInfo("volume: %x",
-                mp3_player.ReadRegister(Vs1053b::SciRegister::kVolume));
+  mp3_decoder.Initialize();
+  mp3_decoder.SetVolume(0.8f);
 
   mp3_player_task.FetchSongs();
   mp3_player_task.Play(1);
