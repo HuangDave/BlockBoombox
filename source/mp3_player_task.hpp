@@ -4,7 +4,7 @@
 
 #include "L3_Application/task_scheduler.hpp"
 
-#include "drivers/mp3_decoder.hpp"
+#include "drivers/audio_decoder.hpp"
 #include "utility/mp3_file.hpp"
 #include "utility/queue.hpp"
 
@@ -17,20 +17,12 @@ constexpr size_t kStreamQueueLength = 1024;
 freertos::Queue<uint8_t, kStreamQueueLength> stream_queue;
 }  // namespace
 
-class Mp3PlayerInterface
+class Mp3PlayerTask final : public sjsu::rtos::Task<512>
 {
  public:
-  virtual void Pause()              = 0;
-  virtual void Play(uint32_t index) = 0;
-};
-
-class Mp3PlayerTask final : public sjsu::rtos::Task<1024>,
-                            public virtual Mp3PlayerInterface
-{
- public:
-  explicit Mp3PlayerTask(Mp3Decoder & decoder)
+  explicit Mp3PlayerTask(AudioDecoder & audio_decoder)
       : Task("MP3_Player_Task", sjsu::rtos::Priority::kLow),
-        decoder_(decoder),
+        audio_decoder_(audio_decoder),
         song_list_count_(0)
   {
   }
@@ -40,35 +32,27 @@ class Mp3PlayerTask final : public sjsu::rtos::Task<1024>,
     return true;
   }
 
-  void Pause() override
-  {
-    decoder_.PausePlayback();
-  }
-
-  void Play(uint32_t index) override
+  void Play(uint32_t index)
   {
     constexpr size_t kBufferSize = 2048;
     mp3::Mp3File & song          = song_list_[index];
+    uint8_t data[kBufferSize];
+    UINT bytes_read = 0;
 
-    decoder_.EnablePlayback();
+    audio_decoder_.Enable();
 
     FIL fil;
     printf("Playing: %s\n", song.GetFilePath());
 
-    f_open(&fil, song.GetFilePath(), FA_READ);
-
     for (size_t i = 0; i < song.GetFileSize() / kBufferSize; i++)
     {
-      uint8_t data[kBufferSize];
-      UINT bytes_read = 0;
-      // f_lseek(&fil, i * kBufferSize);
+      f_open(&fil, song.GetFilePath(), FA_READ);
+      f_lseek(&fil, i * kBufferSize);
       f_read(&fil, data, kBufferSize, &bytes_read);
+      f_close(&fil);
 
-      decoder_.Buffer(data, bytes_read);
-      // printf("Bytes read: %d\n", bytes_read);
+      audio_decoder_.Buffer(data, bytes_read);
     }
-
-    f_close(&fil);
   }
 
   FRESULT FetchSongs()
@@ -98,12 +82,6 @@ class Mp3PlayerTask final : public sjsu::rtos::Task<1024>,
     }
     f_closedir(&dir);
 
-    // TODO: remove this
-    sjsu::LogDebug("Current Song List:");
-    for (size_t i = 0; i < song_list_count_; i++)
-    {
-      sjsu::LogInfo("%s", song_list_[i].GetFilePath());
-    }
     return res;
   }
 
@@ -112,7 +90,7 @@ class Mp3PlayerTask final : public sjsu::rtos::Task<1024>,
   ///       paths from 28 to ??
   static constexpr size_t kMaxSongListCount = 28;
 
-  const Mp3Decoder & decoder_;
+  const AudioDecoder & audio_decoder_;
   mp3::Mp3File song_list_[kMaxSongListCount];
   size_t song_list_count_;
 };
