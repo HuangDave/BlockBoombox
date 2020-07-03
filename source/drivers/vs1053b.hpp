@@ -98,12 +98,12 @@ class Vs1053b : public AudioDecoder
     sjsu::Gpio & dreq;
   };
 
-  static constexpr uint16_t kSampleRateLut[4][4] = {
-    { 11025, 11025, 22050, 44100 },
-    { 12000, 12000, 24000, 48000 },
-    { 8000, 8000, 16000, 32000 },
-    { 0, 0, 0, 0 }
-  };
+  // static constexpr uint16_t kSampleRateLut[4][4] = {
+  //   { 11025, 11025, 22050, 44100 },
+  //   { 12000, 12000, 24000, 48000 },
+  //   { 8000, 8000, 16000, 32000 },
+  //   { 0, 0, 0, 0 }
+  // };
 
   /// @param spi The SPI bus used to drive the device.
   /// @param pins The various controls pins for the devies.
