@@ -104,34 +104,34 @@ class Mp3File
   /// @param force_fetch True if the metadata should or needs to be retrieved.
   ///
   /// @returns Pointer reference of the metadata as teh specified type.
-  template <typename MetadataType>
-  const MetadataType * GetMetadata(bool force_fetch = false)
-  {
-    if (force_fetch)
-    {
-      FIL file;
-      size_t read_count = 0;
+  // template <typename MetadataType>
+  // const MetadataType * GetMetadata(bool force_fetch = false)
+  // {
+  //   if (force_fetch)
+  //   {
+  //     FIL file;
+  //     size_t read_count = 0;
 
-      if (f_open(&file, file_path_, FA_READ) == FR_OK)
-      {
-        // ID3v1 tag is at the last 128 bytes
-        // f_lseek(&file, file_size_ - 256);
-        // f_read(&file, meta_data_, sizeof meta_data_, &read_count);
+  //     if (f_open(&file, file_path_, FA_READ) == FR_OK)
+  //     {
+  //       // ID3v1 tag is at the last 128 bytes
+  //       // f_lseek(&file, file_size_ - 256);
+  //       // f_read(&file, meta_data_, sizeof meta_data_, &read_count);
 
-        // read and check header
-        f_read(&file, meta_data_, sizeof(Id3v2::TagHeader_t), &read_count);
-        auto * header = reinterpret_cast<Id3v2::TagHeader_t *>(meta_data_);
-        printf("ID: %c%c%c\n", header->identifier[0], header->identifier[1],
-               header->identifier[2]);
-        printf("version: 2.%d.%d\n", header->major_version,
-               header->revision_number);
-        printf("size: %ld bytes\n", Id3v2::GetSize(header->size));
-      }
-      f_close(&file);
-    }
+  //       // read and check header
+  //       f_read(&file, meta_data_, sizeof(Id3v2::TagHeader_t), &read_count);
+  //       auto * header = reinterpret_cast<Id3v2::TagHeader_t *>(meta_data_);
+  //       printf("ID: %c%c%c\n", header->identifier[0], header->identifier[1],
+  //              header->identifier[2]);
+  //       printf("version: 2.%d.%d\n", header->major_version,
+  //              header->revision_number);
+  //       printf("size: %ld bytes\n", Id3v2::GetSize(header->size));
+  //     }
+  //     f_close(&file);
+  //   }
 
-    return reinterpret_cast<MetadataType *>(meta_data_);
-  }
+  //   return reinterpret_cast<MetadataType *>(meta_data_);
+  // }
 
  private:
   /// The MP3 file path.
@@ -139,6 +139,6 @@ class Mp3File
   /// Size of the MP3 file in bytes.
   size_t file_size_;
   /// Buffer to hold the retrieved metadata.
-  BYTE meta_data_[256] = {};
+  // BYTE meta_data_[256] = {};
 };
 }  // namespace mp3

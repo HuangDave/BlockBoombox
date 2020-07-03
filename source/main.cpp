@@ -8,9 +8,10 @@
 #include "utility/log.hpp"
 #include "utility/time.hpp"
 
-#include "mp3_player_task.hpp"
-#include "drivers/st7735.hpp"
+// #include "drivers/st7735.hpp"
 #include "drivers/vs1053b.hpp"
+#include "tasks/audio_data_buffer_task.hpp"
+#include "tasks/mp3_player_task.hpp"
 
 // private namespace
 namespace
@@ -26,12 +27,12 @@ sjsu::lpc17xx::Gpio rst(2, 5);   // gree
 sjsu::lpc17xx::Gpio cs(2, 6);    // yellow
 sjsu::lpc17xx::Gpio dcs(2, 7);   // orange
 Vs1053b mp3_decoder(spi0,
-                   {
-                       .rst  = rst,
-                       .cs   = cs,
-                       .dcs  = dcs,
-                       .dreq = dreq,
-                   });
+                    {
+                        .rst  = rst,
+                        .cs   = cs,
+                        .dcs  = dcs,
+                        .dreq = dreq,
+                    });
 
 // -----------------------------------------------------------------------------
 //                                TFT LCD
@@ -50,71 +51,60 @@ Vs1053b mp3_decoder(spi0,
 //            kLcdScreenWidth,
 //            kLcdScreenHeight);
 
+// -----------------------------------------------------------------------------
+//                                  SD Card
+// -----------------------------------------------------------------------------
+
+sjsu::rtos::TaskScheduler task_scheduler;
+Mp3PlayerTask mp3_player_task(mp3_decoder);
+AudioDataBufferTask<Mp3PlayerTask::kBufferLength> audio_buffer_task(
+    mp3_player_task);
+
 /// Configures the CPU clock to run at 96 MHz.
 void ConfigurateSystemClock()
 {
   auto & system_controller   = sjsu::SystemController::GetPlatformController();
   auto & clock_configuration = system_controller.GetClockConfiguration<
       sjsu::lpc17xx::SystemController::ClockConfiguration_t>();
-  clock_configuration.cpu.divider = 3;
+  clock_configuration.cpu.divider = 6;
 
   sjsu::InitializePlatform();
 }
-
-// void TestLcd()
-// {
-//   lcd.FillFrame(graphics::Frame_t(0, 0, lcd.GetWidth(), 10),
-//   graphics::kRed);
-//   lcd.FillFrame(graphics::Frame_t(0, 20, lcd.GetWidth(), 10),
-//   graphics::kGreen);
-//   lcd.FillFrame(graphics::Frame_t(0, 40, lcd.GetWidth(), 10),
-//   graphics::kBlue);
-//   sjsu::Delay(1s);
-//   lcd.FillFrame(graphics::Frame_t(0, 0, lcd.GetWidth(), 10),
-//   graphics::kWhite);
-//   lcd.FillFrame(graphics::Frame_t(0, 20, lcd.GetWidth(), 10),
-//   graphics::kWhite);
-//   lcd.FillFrame(graphics::Frame_t(0, 40, lcd.GetWidth(), 10),
-//   graphics::kWhite);
-// }
-
-// -----------------------------------------------------------------------------
-//                                  SD Card
-// -----------------------------------------------------------------------------
-sjsu::lpc17xx::Gpio sd_cs(1, 25);
-sjsu::lpc17xx::Gpio sd_cd(1, 26);
-sjsu::Sd sd_card(spi1, sd_cs, sd_cd);
-
-Mp3PlayerTask mp3_player_task(mp3_decoder);
 }  // namespace
 
 int main()
 {
-  LOG_INFO("Starting Application");
+  sjsu::LogInfo("Starting Application");
 
   ConfigurateSystemClock();
 
+  sjsu::lpc17xx::Gpio sd_cs(1, 25);
+  sjsu::lpc17xx::Gpio sd_cd(1, 26);
+  sjsu::Sd sd_card(spi1, sd_cs, sd_cd);
+  sd_card.Initialize();
+
+  // Register and mount FatFs
+  FATFS fat_fs;
   if (!sjsu::RegisterFatFsDrive(&sd_card))
   {
     return -1;
   }
-
-  FATFS fat_fs;
   if (f_mount(&fat_fs, "", 0) != 0)
   {
     sjsu::LogError("Failed to mount SD Card");
-    return false;
+    return -2;
   }
 
   mp3_decoder.Initialize();
   mp3_decoder.SetVolume(0.8f);
 
-  mp3_player_task.FetchSongs();
-  mp3_player_task.Play(1);
+  task_scheduler.AddTask(&mp3_player_task);
+  task_scheduler.AddTask(&audio_buffer_task);
+  task_scheduler.Start();
 
   while (true)
   {
-    // TestLcd();
+    continue;
   }
 
   return 0;
