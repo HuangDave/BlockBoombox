@@ -7,7 +7,7 @@
 #include "utility/enum.hpp"
 #include "utility/log.hpp"
 
-#include "graphics/graphics.hpp"
+#include "../graphics/graphics.hpp"
 
 class St7735 final : public sjsu::PixelDisplay
 {

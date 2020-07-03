@@ -79,7 +79,10 @@ class Mp3File
   constexpr Mp3File(const char * file_path = nullptr, size_t file_size = 0)
       : file_size_(file_size)
   {
-    strcpy(file_path_, file_path);
+    if (file_path != nullptr)
+    {
+      strcpy(file_path_, file_path);
+    }
   }
 
   /// @returns The MP3 file's file path.
