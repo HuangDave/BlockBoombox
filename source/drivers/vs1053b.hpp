@@ -9,22 +9,8 @@
 
 #include "audio_decoder.hpp"
 
-/// TODO: revise documentation
-///
-/// The VS1053b operates input clock freq. XTALI = 12.288 MHz or 24-26 MHz when
-/// SM_CLK_RANGE in SCI_MODE is set to 1.
-///
-/// The SCI_CLOCKF register is used to increase the internal clock rate of the
-/// device.
-///
-///   CLKI = XTALI * multiplier
-///
-/// When performing SCI reads, SPI clk should be ~(CLKI/7).
-/// When performing SCI / SDI writes, SPI clk should be ~(CLKI/4).
-///
-/// Therefore, on reset, the initial SPI clock rate needs to be less
-/// than 12.288Mhz / 4 = ~3MHz. Once the SCI_CLOCKF multiplier is set, the SPI
-/// clock can be changed to faster speeds.
+/// Audio decoder capable of decoding various formats such as Ogg Vorbis, MP3,
+/// AAC, WMA, and MIDI.
 class Vs1053b : public AudioDecoder
 {
  public:
@@ -44,7 +30,7 @@ class Vs1053b : public AudioDecoder
     kMode = 0x0,
     /// Device status.
     kStatus = 0x1,
-    /// Built-in bass/treble control.
+    /// Clock multiplier.
     kClockF = 0x3,
     /// Decode time in seconds.
     kDecodeTime = 0x4,
@@ -71,14 +57,10 @@ class Vs1053b : public AudioDecoder
     static constexpr auto kResetMask = sjsu::bit::MaskFromRange(2);
     /// Cancel decoding current file
     static constexpr auto kCancelMask = sjsu::bit::MaskFromRange(3);
-    /// Stream mode: 0 = false, 1 = true
-    static constexpr auto kStreamModeMask = sjsu::bit::MaskFromRange(6);
     /// SPI mode: 0 = VS1001 Compatibility Mode, 1 = VS10xx New Mode
     static constexpr auto kSdiNewMask = sjsu::bit::MaskFromRange(11);
     /// MIC/LINE1 selector: 0 = MICP, 1 = LINE1
     static constexpr auto kLine1Mask = sjsu::bit::MaskFromRange(14);
-    /// Input clock range: 0 = 12-13MHz, 1 = 24-26MHz
-    static constexpr auto kClockRangeMask = sjsu::bit::MaskFromRange(15);
 
     /// @returns The default configuration for the SCI mode register (0x4800).
     static constexpr SciModeRegister Default()
@@ -91,73 +73,6 @@ class Vs1053b : public AudioDecoder
     explicit constexpr SciModeRegister(uint16_t value = 0x0000) : Value(value)
     {
     }
-  };
-
-  /*
-  struct SciModeRegister
-  {
-    /// Differential: 0 = normal in-phase audio, 1 = left channel inverted.
-    // static constexpr auto kDifferentialMask = sjsu::bit::MaskFromRange(0);
-
-    /// Allow MPEG layers I & II: 0 = false, 1 = true.
-    // static constexpr auto kMpegLayerMask = sjsu::bit::MaskFromRange(1);
-
-    /// Software Reset: 0 = no reset, 1 = reset.
-    static constexpr auto kResetMask = sjsu::bit::MaskFromRange(2);
-    /// Cancel decoding current file
-    static constexpr auto kCancelMask = sjsu::bit::MaskFromRange(3);
-
-    /// EarSpeaker low setting: 0 = off, 1 = active
-    // static constexpr auto kEarSpeakerLowMask = sjsu::bit::MaskFromRange(4);
-
-    /// Allow SDI tests
-    // static constexpr auto kTestMask = sjsu::bit::MaskFromRange(5);
-
-    /// Stream mode: 0 = false, 1 = true
-    static constexpr auto kStreamModeMask = sjsu::bit::MaskFromRange(6);
-
-    /// EarSpeaker high setting: 0 = off, 1 = active
-    // static constexpr auto kEarSpeakerHighMask = sjsu::bit::MaskFromRange(7);
-
-    /// DCLK active edge: 0 = rising, 1 = falling
-    // static constexpr auto kActiveEdgeMask = sjsu::bit::MaskFromRange(8);
-
-    /// SDI bit order: 0 = MSb first, 1 = MSb last
-    // static constexpr auto kBitOrderMask = sjsu::bit::MaskFromRange(9);
-
-    /// Share SPI chip select
-    // static constexpr auto kShareCsMask = sjsu::bit::MaskFromRange(10);
-
-    /// SPI mode: 0 = VS1001 Compatibility Mode, 1 = VS10xx New Mode
-    static constexpr auto kSdiNewMask = sjsu::bit::MaskFromRange(11);
-
-    /// PCM/ADPCM recording active: 0 = false, 1 = true
-    // static constexpr auto kAdpcmMask = sjsu::bit::MaskFromRange(12);
-
-    /// MIC/LINE1 selector: 0 = MICP, 1 = LINE1
-    static constexpr auto kLine1Mask = sjsu::bit::MaskFromRange(14);
-
-    /// Input clock range: 0 = 12-13MHz, 1 = 24-26MHz
-    static constexpr auto kClockRangeMask = sjsu::bit::MaskFromRange(15);
-
-    static constexpr uint16_t kModeDefault =
-        sjsu::bit::Value().Set(kSdiNewMask).Set(kLine1Mask);
-  }; */
-
-  enum class SciClockOption : uint16_t
-  {
-    /// Multiply internal clock by 1x
-    kMultiplyBy1 = 0x0000,
-    /// Multiply internal clock by 2x
-    kMultiplyBy2 = 0x2000,
-    /// Multiply internal clock by 2.5x
-    kMultiplyBy2_5 = 0x4000,
-    /// Multiply internal clock by 3x
-    kMultiplyBy3 = 0x6000,
-    /// Multiply internal clock by 3.5x
-    kMultiplyBy3_5 = 0x8000,
-    /// Multiply internal clock by 4x
-    kMultiplyBy4 = 0xA000,
   };
 
   enum class SciAudioDataOption : uint16_t
@@ -207,31 +122,56 @@ class Vs1053b : public AudioDecoder
 
     pins_.dreq.SetAsInput();
 
-    // Initial SPI speed needs to be 3 MHz
+    // The VS1053b operates at an input clock frequency of XTALI = 12.288 MHz
+    // when SM_CLK_RANGE in the SCI_MODE register is set to 0 or 24-26 MHz when
+    // SM_CLK_RANGE is set to 1.
+    //
+    // The SCI_CLOCKF register is used to increase the internal clock rate of
+    // the device. On reset, the multiplier is 1.0x. The clock frequency is:
+    //
+    //   CLKI = XTALI * multiplier
+    //
+    // When performing SCI reads, SPI clk should be ~(CLKI/7).
+    // When performing SCI / SDI writes, SPI clk should be ~(CLKI/4).
+    //
+    // Therefore, on reset, the initial SPI clock rate needs to be less
+    // than CLKI / 4 = ~3 MHz.
+    //
+    // Once the SCI_CLOCKF multiplier is set, the SPI clock can be changed to
+    // faster speeds.
     spi_.SetClock(3_MHz);
     spi_.SetDataSize(sjsu::Spi::DataSize::kEight);
     spi_.Initialize();
 
     Reset();
 
-    WriteSci(SciRegister::kClockF,
-             { sjsu::Value(SciClockOption::kMultiplyBy4) });
+    constexpr units::frequency::hertz_t kXtali = 12.288_MHz;
+    read_speed_                                = kXtali / 7;
+    write_speed_                               = kXtali / 4;
 
-    while (!IsReady())
-    {
-      continue;
-    }
-    // Can now clock the SPI clock higher once the multiplier is set.
+    constexpr uint16_t kClockMultiplier = 0xA000;
+    WriteSci(SciRegister::kClockF, { kClockMultiplier });
+    WaitForReadyStatus();
+
+    // Can now clock the SPI clock higher once the multiplier is set and the
+    // device is ready.
+    //
     // The internal device clock is now CLKI = 4 * ~12.288 MHz = ~49.152 MHz
-    //    For SCI r/w, a SPI clock CLKI / 7 = ~7 MHz is desired.
-    //    For SDI write, a SPI clock CLKI / 4 ~12 MHz is desired.
+    //    For SCI read, a SPI clock CLKI / 7 = ~7 MHz is desired.
+    //    For SCI/SDI write, a SPI clock CLKI / 4 = ~12 MHz is desired.
+    constexpr units::frequency::hertz_t kClki = kXtali * 4;
+    read_speed_                               = kClki / 7;
+    write_speed_                              = kClki / 4;
   }
 
   /// @see Data Request Pin DREQ
   ///      https://cdn-shop.adafruit.com/datasheets/vs1053.pdf#page=16
-  bool IsReady() const
+  void WaitForReadyStatus() const
   {
-    return pins_.dreq.Read();
+    while (!pins_.dreq.Read())
+    {
+      continue;
+    }
   }
 
   /// Toggles the reset pin to perform a hardware reset.
@@ -242,10 +182,7 @@ class Vs1053b : public AudioDecoder
     sjsu::Delay(10us);
     pins_.rst.SetHigh();
 
-    while (!IsReady())
-    {
-      continue;
-    }
+    WaitForReadyStatus();
   }
 
   /// Performs a software reset by sending the reset command to the SCI Mode
@@ -258,11 +195,7 @@ class Vs1053b : public AudioDecoder
 
     WriteSci(SciRegister::kMode, { reset_command });
     sjsu::Delay(2us);
-
-    while (!IsReady())
-    {
-      continue;
-    }
+    WaitForReadyStatus();
   }
 
   // ---------------------------------------------------------------------------
@@ -287,8 +220,9 @@ class Vs1053b : public AudioDecoder
         SciModeRegister::Default().Set(SciModeRegister::kCancelMask);
     WriteSci(SciRegister::kMode, { kStreamModeCancel });
 
-    while (!IsReady() || sjsu::bit::Read(ReadRegister(SciRegister::kMode),
-                                         SciModeRegister::kCancelMask))
+    while (!pins_.dreq.Read() ||
+           sjsu::bit::Read(ReadRegister(SciRegister::kMode),
+                           SciModeRegister::kCancelMask))
     {
       continue;
     }
@@ -348,12 +282,9 @@ class Vs1053b : public AudioDecoder
   /// @return The 16-bit register data.
   uint16_t ReadRegister(SciRegister address) const
   {
-    while (!IsReady())
-    {
-      continue;
-    }
+    WaitForReadyStatus();
 
-    spi_.SetClock(3_MHz);
+    spi_.SetClock(read_speed_);
 
     uint16_t data = 0x0;
     pins_.cs.SetLow();
@@ -379,12 +310,9 @@ class Vs1053b : public AudioDecoder
   void WriteSci(SciRegister address,
                 const std::initializer_list<uint16_t> data) const
   {
-    while (!IsReady())
-    {
-      continue;
-    }
+    WaitForReadyStatus();
 
-    spi_.SetClock(3_MHz);
+    spi_.SetClock(write_speed_);
 
     pins_.cs.SetLow();
     {
@@ -402,12 +330,9 @@ class Vs1053b : public AudioDecoder
 
   void WriteSdi(const uint8_t * data, size_t length) const
   {
-    while (!IsReady())
-    {
-      continue;
-    }
+    WaitForReadyStatus();
 
-    spi_.SetClock(12_MHz);
+    spi_.SetClock(write_speed_);
 
     pins_.dcs.SetLow();
     {
@@ -422,4 +347,6 @@ class Vs1053b : public AudioDecoder
  private:
   const sjsu::Spi & spi_;
   const ControlPins_t pins_;
+  mutable units::frequency::hertz_t read_speed_  = 0_MHz;
+  mutable units::frequency::hertz_t write_speed_ = 0_MHz;
 };
