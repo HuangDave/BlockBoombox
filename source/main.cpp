@@ -12,6 +12,7 @@
 #include "drivers/vs1053b.hpp"
 #include "tasks/audio_data_buffer_task.hpp"
 #include "tasks/mp3_player_task.hpp"
+// #include "utility/fatfs.hpp"
 
 // private namespace
 namespace
@@ -33,6 +34,10 @@ Vs1053b mp3_decoder(spi0,
                         .dcs  = dcs,
                         .dreq = dreq,
                     });
+
+sjsu::lpc17xx::Gpio sd_cs(1, 25);
+sjsu::lpc17xx::Gpio sd_cd(1, 26);
+sjsu::Sd sd_card(spi1, sd_cs, sd_cd);
 
 // -----------------------------------------------------------------------------
 //                                TFT LCD
@@ -59,6 +64,7 @@ sjsu::rtos::TaskScheduler task_scheduler;
 Mp3PlayerTask mp3_player_task(mp3_decoder);
 AudioDataBufferTask<Mp3PlayerTask::kBufferLength> audio_buffer_task(
     mp3_player_task);
+AudioDataDecodeTask<Mp3PlayerTask::kBufferLength> decoder_task(mp3_player_task);
 
 /// Configures the CPU clock to run at 96 MHz.
 void ConfigurateSystemClock()
@@ -66,7 +72,7 @@ void ConfigurateSystemClock()
   auto & system_controller   = sjsu::SystemController::GetPlatformController();
   auto & clock_configuration = system_controller.GetClockConfiguration<
       sjsu::lpc17xx::SystemController::ClockConfiguration_t>();
-  clock_configuration.cpu.divider = 6;
+  clock_configuration.cpu.divider = 3;
 
   sjsu::InitializePlatform();
 }
@@ -78,9 +84,6 @@ int main()
 
   ConfigurateSystemClock();
 
-  sjsu::lpc17xx::Gpio sd_cs(1, 25);
-  sjsu::lpc17xx::Gpio sd_cd(1, 26);
-  sjsu::Sd sd_card(spi1, sd_cs, sd_cd);
   sd_card.Initialize();
 
   // Register and mount FatFs
@@ -100,6 +103,7 @@ int main()
 
   task_scheduler.AddTask(&mp3_player_task);
   task_scheduler.AddTask(&audio_buffer_task);
+  task_scheduler.AddTask(&decoder_task);
   task_scheduler.Start();
 
   while (true)
