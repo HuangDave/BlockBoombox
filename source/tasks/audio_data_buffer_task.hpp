@@ -8,66 +8,41 @@
 #include "mp3_player_task.hpp"
 
 template <size_t kBufferLength>
-class AudioDataBufferTask final : public sjsu::rtos::Task<1024 * 2>
+class AudioDataBufferTask final : public sjsu::rtos::Task<4 * 1024>
 {
  public:
   explicit AudioDataBufferTask(Mp3Player & player)
-      : Task("AudioDataBufferTask", sjsu::rtos::Priority::kLow), player_(player)
+      : Task("AudioDataBufferTask", sjsu::rtos::Priority::kLow),
+        decoder_(player.GetDecoder()),
+        song_queue_(player.GetSongQueue()),
+        buffer_queue_(player.GetDataBufferQueue())
   {
+    buffer =
+        reinterpret_cast<uint8_t *>(malloc(kBufferLength * sizeof(uint8_t)));
   }
 
   bool Run() override
   {
-    mp3::Mp3File * song = nullptr;
+    mp3::Mp3File song;
 
-    const auto & kDecoder   = *player_.GetDecoder();
-    const auto & kSongQueue = *player_.GetSongQueue();
-    // const auto & kBufferQueue = player_.GetDataBufferQueue();
-
-    if (kSongQueue.Receive(&song) == pdTRUE)
+    if (xQueueReceive(song_queue_, &song, portMAX_DELAY))
     {
-      kDecoder.Enable();
+      decoder_.Enable();
 
-      for (size_t i = 0; i < song->GetFileSize() / kBufferLength; i++)
+      FIL fil;
+      UINT bytes_read = 0;
+
+      for (size_t i = 0; i < song.GetFileSize() / kBufferLength; i++)
       {
-        uint8_t buffer[kBufferLength];
-        FIL fil;
-        UINT bytes_read = 0;
-        //     // if (!decoder_.IsPlaying())
-        //     // {
-        //     //   // TODO: player is paused, task should sleep
-        //     // }
-        //     // else if (true)  // TODO: change check
-        //     // {
-        //     //   // TODO: different song selected or play next song
-        //     //   //       1. should stop buffering data
-        //     //   //       2. clear the buffer queue
-        //     //   //       3. break loop
-        //     // }
-
-        // sjsu::LogInfo("%s", song->GetFilePath());
-
-taskENTER_CRITICAL();
-
-        FATFS fat_fs;
-        f_mount(&fat_fs, "", 0);
-
-        if (FR_OK ==
-            f_open(&fil, song->GetFilePath(), FA_OPEN_EXISTING | FA_READ))
+        if (FR_OK == f_open(&fil, song.GetFilePath(), FA_READ))
         {
           f_lseek(&fil, i * kBufferLength);
           f_read(&fil, buffer, kBufferLength, &bytes_read);
           f_close(&fil);
         }
-        f_unmount("");
 
-taskEXIT_CRITICAL();
-        // for (size_t j = 0; j < bytes_read; j++)
-        // {
-        //   kDecoder.Buffer(buffer, bytes_read);
-        //   // kBufferQueue.Send(buffer[j]);
-        // }
-        // vTaskDelay(10);
+        xQueueSend(buffer_queue_, buffer, portMAX_DELAY);
+        vTaskDelay(15);
       }
     }
 
@@ -75,35 +50,39 @@ taskEXIT_CRITICAL();
   }
 
  private:
-  const Mp3Player & player_;
+  const AudioDecoder & decoder_;
+  const QueueHandle_t song_queue_;
+  const QueueHandle_t buffer_queue_;
+
+  uint8_t * buffer;
 };
 
-// template <size_t kBufferLength>
-// class AudioDataDecodeTask final : public sjsu::rtos::Task<256>
-// {
-//  public:
-//   using BufferQueue = freertos::Queue<uint8_t *, kBufferLength>;
+template <size_t kBufferLength>
+class AudioDataDecodeTask final : public sjsu::rtos::Task<512>
+{
+ public:
+  AudioDataDecodeTask(Mp3Player & player)
+      : Task("AudioDataDecodeTask", sjsu::rtos::Priority::kLow),
+        decoder_(player.GetDecoder()),
+        buffer_queue_(player.GetDataBufferQueue())
+  {
+    buffer =
+        reinterpret_cast<uint8_t *>(malloc(kBufferLength * sizeof(uint8_t)));
+  }
 
-//   AudioDataDecodeTask(AudioDecoder & decoder, BufferQueue & buffer_queue)
-//       : Task("AudioDataDecodeTask", sjsu::rtos::Priority::kLow),
-//         decoder_(decoder),
-//         buffer_queue_(buffer_queue)
-//   {
-//   }
+  bool Run() override
+  {
+    if (xQueueReceive(buffer_queue_, buffer, portMAX_DELAY))
+    {
+      decoder_.Buffer(buffer, kBufferLength);
+      vTaskDelay(15);
+    }
+    return true;
+  }
 
-//   bool Run() override
-//   {
-//     uint8_t buffer[kBufferLength];
+ private:
+  const AudioDecoder & decoder_;
+  const QueueHandle_t buffer_queue_;
 
-//     if (buffer_queue_.Receive(&buffer) == pdTRUE)
-//     {
-//       decoder_.Buffer(buffer, kBufferLength);
-//     }
-
-//     return true;
-//   }
-
-//  private:
-//   const AudioDecoder & decoder_;
-//   const BufferQueue & buffer_queue_;
-// };
+  uint8_t * buffer;
+};
