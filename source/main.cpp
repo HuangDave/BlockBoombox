@@ -1,18 +1,14 @@
-#include <bitset>
-
 #include "L0_Platform/startup.hpp"
 #include "L1_Peripheral/lpc17xx/gpio.hpp"
 #include "L1_Peripheral/lpc17xx/spi.hpp"
 #include "L2_HAL/memory/sd.hpp"
 #include "L3_Application/fatfs.hpp"
 #include "utility/log.hpp"
-#include "utility/time.hpp"
 
-// #include "drivers/st7735.hpp"
+#include "drivers/st7735.hpp"
 #include "drivers/vs1053b.hpp"
 #include "tasks/audio_data_buffer_task.hpp"
 #include "tasks/mp3_player_task.hpp"
-// #include "utility/fatfs.hpp"
 
 // private namespace
 namespace
@@ -23,6 +19,7 @@ sjsu::lpc17xx::Spi spi1(sjsu::lpc17xx::SpiBus::kSpi1);
 // -----------------------------------------------------------------------------
 //                                MP3 Decoder
 // -----------------------------------------------------------------------------
+
 sjsu::lpc17xx::Gpio dreq(2, 4);  // blue
 sjsu::lpc17xx::Gpio rst(2, 5);   // gree
 sjsu::lpc17xx::Gpio cs(2, 6);    // yellow
@@ -35,13 +32,10 @@ Vs1053b mp3_decoder(spi0,
                         .dreq = dreq,
                     });
 
-sjsu::lpc17xx::Gpio sd_cs(1, 25);
-sjsu::lpc17xx::Gpio sd_cd(1, 26);
-sjsu::Sd sd_card(spi1, sd_cs, sd_cd);
-
 // -----------------------------------------------------------------------------
 //                                TFT LCD
 // -----------------------------------------------------------------------------
+
 // constexpr units::frequency::hertz_t kLcdFrequency = 12_MHz;
 // constexpr size_t kLcdScreenWidth                  = 128;
 // constexpr size_t kLcdScreenHeight                 = 160;
@@ -60,32 +54,34 @@ sjsu::Sd sd_card(spi1, sd_cs, sd_cd);
 //                                  SD Card
 // -----------------------------------------------------------------------------
 
+sjsu::lpc17xx::Gpio sd_cs(1, 25);
+sjsu::lpc17xx::Gpio sd_cd(1, 26);
+sjsu::Sd sd_card(spi1, sd_cs, sd_cd);
+
+// -----------------------------------------------------------------------------
+//                                  Tasks
+// -----------------------------------------------------------------------------
+
 sjsu::rtos::TaskScheduler task_scheduler;
 Mp3PlayerTask mp3_player_task(mp3_decoder);
 AudioDataBufferTask<Mp3PlayerTask::kBufferLength> audio_buffer_task(
     mp3_player_task);
 AudioDataDecodeTask<Mp3PlayerTask::kBufferLength> decoder_task(mp3_player_task);
+}  // namespace
 
-/// Configures the CPU clock to run at 96 MHz.
-void ConfigurateSystemClock()
+int main()
 {
+  sjsu::LogDebug("Starting Application");
+
+  /// Configures the CPU clock to run at 96 MHz.
   auto & system_controller   = sjsu::SystemController::GetPlatformController();
   auto & clock_configuration = system_controller.GetClockConfiguration<
       sjsu::lpc17xx::SystemController::ClockConfiguration_t>();
   clock_configuration.cpu.divider = 3;
 
   sjsu::InitializePlatform();
-}
-}  // namespace
-
-int main()
-{
-  sjsu::LogInfo("Starting Application");
-
-  ConfigurateSystemClock();
 
   sd_card.Initialize();
-
   // Register and mount FatFs
   FATFS fat_fs;
   if (!sjsu::RegisterFatFsDrive(&sd_card))
@@ -106,10 +102,7 @@ int main()
   task_scheduler.AddTask(&decoder_task);
   task_scheduler.Start();
 
-  while (true)
-  {
-    continue;
-  }
+  sjsu::Halt();
 
   return 0;
 }

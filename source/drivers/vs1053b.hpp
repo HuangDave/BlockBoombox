@@ -1,7 +1,5 @@
 #pragma once
 
-#include <initializer_list>
-
 #include "L1_Peripheral/gpio.hpp"
 #include "L1_Peripheral/spi.hpp"
 #include "utility/enum.hpp"
@@ -75,12 +73,6 @@ class Vs1053b : public AudioDecoder
     }
   };
 
-  enum class SciAudioDataOption : uint16_t
-  {
-    kStereo = 0,
-    k44100  = 44100,
-  };
-
   /// @see 7.1.1 VS10xx Native Modes (New Mode, recommended)
   ///      https://cdn-shop.adafruit.com/datasheets/vs1053.pdf#page=15
   struct ControlPins_t
@@ -149,8 +141,8 @@ class Vs1053b : public AudioDecoder
     read_speed_                                = kXtali / 7;
     write_speed_                               = kXtali / 4;
 
-    constexpr uint16_t kClockMultiplier = 0xA000;
-    WriteSci(SciRegister::kClockF, { kClockMultiplier });
+    constexpr uint16_t kClockMultiplier = 0xA000;  // 4x multiplier
+    WriteSci(SciRegister::kClockF, kClockMultiplier);
     WaitForReadyStatus();
 
     // Can now clock the SPI clock higher once the multiplier is set and the
@@ -193,7 +185,7 @@ class Vs1053b : public AudioDecoder
                                            .Set(SciModeRegister::kSdiNewMask)
                                            .Set(SciModeRegister::kResetMask);
 
-    WriteSci(SciRegister::kMode, { reset_command });
+    WriteSci(SciRegister::kMode, reset_command);
     sjsu::Delay(2us);
     WaitForReadyStatus();
   }
@@ -207,8 +199,8 @@ class Vs1053b : public AudioDecoder
   {
     Resume();
     // Automatic Resync selector
-    WriteSci(SciRegister::kWRamAddr, { 0x1E29 });
-    WriteSci(SciRegister::kWRam, { 0x0000 });
+    WriteSci(SciRegister::kWRamAddr, 0x1E29);
+    WriteSci(SciRegister::kWRam, 0x0000);
     ClearDecodeTime();
   }
 
@@ -218,7 +210,7 @@ class Vs1053b : public AudioDecoder
   {
     constexpr uint16_t kStreamModeCancel =
         SciModeRegister::Default().Set(SciModeRegister::kCancelMask);
-    WriteSci(SciRegister::kMode, { kStreamModeCancel });
+    WriteSci(SciRegister::kMode, kStreamModeCancel);
 
     while (!pins_.dreq.Read() ||
            sjsu::bit::Read(ReadRegister(SciRegister::kMode),
@@ -231,22 +223,21 @@ class Vs1053b : public AudioDecoder
   /// Resume audio decoding.
   void Resume() const override
   {
-    constexpr uint16_t kAuDataOption =
-        sjsu::Value(SciAudioDataOption::kStereo) |
-        sjsu::Value(SciAudioDataOption::k44100);
-
-    WriteSci(SciRegister::kMode, { SciModeRegister::Default() });
-    WriteSci(SciRegister::kAuData, { kAuDataOption });
+    constexpr uint16_t kAuDataOption = 0xAC45;
+    WriteSci(SciRegister::kMode, SciModeRegister::Default());
+    WriteSci(SciRegister::kAuData, kAuDataOption);
   }
 
   // Resets the current decode time to 0:00, this is done by writing 0x0 to the
   // SCI decode time register twice.
   void ClearDecodeTime() const override
   {
-    WriteSci(SciRegister::kDecodeTime, { 0x0000 });
-    WriteSci(SciRegister::kDecodeTime, { 0x0000 });
+    WriteSci(SciRegister::kDecodeTime, 0x0000);
+    WriteSci(SciRegister::kDecodeTime, 0x0000);
   }
 
+  /// Sends audio data to the decoder 32 bytes at a time.
+  ///
   /// @see 9.4 Serial Data Interface (SDI)
   ///      https://cdn-shop.adafruit.com/datasheets/vs1053.pdf#page=37
   ///
@@ -273,9 +264,10 @@ class Vs1053b : public AudioDecoder
     // higher 8-bits is for the left channel and the lower 8-bits are for the
     // right channel.
     uint16_t volume = static_cast<uint16_t>(difference << 8) | volume;
-    WriteSci(SciRegister::kVolume, { volume });
+    WriteSci(SciRegister::kVolume, volume);
   }
 
+ private:
   /// Reads a desired SCI register.
   ///
   /// @param address The address of the SCI register to read.
@@ -306,9 +298,8 @@ class Vs1053b : public AudioDecoder
   /// @note Need to wait for DREQ
   ///
   /// @param address The address of the SCI register to write to.
-  /// @param data The data to write.
-  void WriteSci(SciRegister address,
-                const std::initializer_list<uint16_t> data) const
+  /// @param data The 16-bit data to write.
+  void WriteSci(SciRegister address, uint16_t data) const
   {
     WaitForReadyStatus();
 
@@ -318,16 +309,17 @@ class Vs1053b : public AudioDecoder
     {
       spi_.Transfer(sjsu::Value(Operation::kWrite));
       spi_.Transfer(sjsu::Value(address));
-
-      for (uint16_t word : data)
-      {
-        spi_.Transfer(static_cast<uint8_t>(word >> 8));
-        spi_.Transfer(word & 0xFF);
-      }
+      spi_.Transfer(static_cast<uint8_t>(data >> 8));
+      spi_.Transfer(data & 0xFF);
     }
     pins_.cs.SetHigh();
   }
 
+  /// Sends audio data byte(s) for decoding.
+  ///
+  /// @param data The data to write.
+  /// @param length Length of the data array. This should not exceed 32 since
+  ///               DREQ must be checked every 32 bytes.
   void WriteSdi(const uint8_t * data, size_t length) const
   {
     WaitForReadyStatus();
@@ -344,7 +336,6 @@ class Vs1053b : public AudioDecoder
     pins_.dcs.SetHigh();
   }
 
- private:
   const sjsu::Spi & spi_;
   const ControlPins_t pins_;
   mutable units::frequency::hertz_t read_speed_  = 0_MHz;

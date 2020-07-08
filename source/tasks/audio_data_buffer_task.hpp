@@ -75,7 +75,6 @@ class AudioDataDecodeTask final : public sjsu::rtos::Task<512>
     if (xQueueReceive(buffer_queue_, buffer, portMAX_DELAY))
     {
       decoder_.Buffer(buffer, kBufferLength);
-      vTaskDelay(15);
     }
     return true;
   }

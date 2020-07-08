@@ -16,11 +16,12 @@ class Mp3Player
   virtual QueueHandle_t GetDataBufferQueue() const = 0;
 };
 
-class Mp3PlayerTask final : public sjsu::rtos::Task<512>,
+class Mp3PlayerTask final : public sjsu::rtos::Task<256>,
                             public virtual Mp3Player
 {
  public:
   static constexpr size_t kSongQueueLength = 2;
+  static constexpr size_t kBufferItemCount = 3;
   static constexpr size_t kBufferLength    = 1024;
 
   explicit Mp3PlayerTask(AudioDecoder & audio_decoder)
@@ -28,18 +29,18 @@ class Mp3PlayerTask final : public sjsu::rtos::Task<512>,
         audio_decoder_(audio_decoder),
         song_list_count_(0)
   {
-    song_queue_   = xQueueCreate(kSongQueueLength, sizeof(mp3::Mp3File));
-    buffer_queue_ = xQueueCreate(5, kBufferLength * sizeof(uint8_t));
+    song_queue_ = xQueueCreate(kSongQueueLength, sizeof(mp3::Mp3File));
+    buffer_queue_ =
+        xQueueCreate(kBufferItemCount, kBufferLength * sizeof(uint8_t));
   }
+
+  // ---------------------------------------------------------------------------
+  //                           Task Implementation
+  // ---------------------------------------------------------------------------
 
   bool Setup() override
   {
     FetchSongs();
-    return true;
-  }
-
-  bool PreRun() override
-  {
     Play(0);
     return true;
   }
@@ -55,7 +56,7 @@ class Mp3PlayerTask final : public sjsu::rtos::Task<512>,
   }
 
   // ---------------------------------------------------------------------------
-  //                        Mp3Player Implementation
+  //                         Mp3Player Implementation
   // ---------------------------------------------------------------------------
 
   const AudioDecoder & GetDecoder() const override
