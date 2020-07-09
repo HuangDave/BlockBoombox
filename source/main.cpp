@@ -1,10 +1,12 @@
 #include "L0_Platform/startup.hpp"
 #include "L1_Peripheral/lpc17xx/gpio.hpp"
 #include "L1_Peripheral/lpc17xx/spi.hpp"
+#include "L1_Peripheral/lpc17xx/uart.hpp"
 #include "L2_HAL/memory/sd.hpp"
 #include "L3_Application/fatfs.hpp"
 #include "utility/log.hpp"
 
+#include "drivers/hm10.hpp"
 #include "drivers/st7735.hpp"
 #include "drivers/vs1053b.hpp"
 #include "tasks/audio_data_buffer_task.hpp"
@@ -13,24 +15,25 @@
 // private namespace
 namespace
 {
-sjsu::lpc17xx::Spi spi0(sjsu::lpc17xx::SpiBus::kSpi0);
-sjsu::lpc17xx::Spi spi1(sjsu::lpc17xx::SpiBus::kSpi1);
+// sjsu::lpc17xx::Spi spi0(sjsu::lpc17xx::SpiBus::kSpi0);
+// sjsu::lpc17xx::Spi spi1(sjsu::lpc17xx::SpiBus::kSpi1);
+sjsu::lpc17xx::Uart uart2(sjsu::lpc17xx::UartPort::kUart2);
 
 // -----------------------------------------------------------------------------
 //                                MP3 Decoder
 // -----------------------------------------------------------------------------
 
-sjsu::lpc17xx::Gpio dreq(2, 4);  // blue
-sjsu::lpc17xx::Gpio rst(2, 5);   // gree
-sjsu::lpc17xx::Gpio cs(2, 6);    // yellow
-sjsu::lpc17xx::Gpio dcs(2, 7);   // orange
-Vs1053b mp3_decoder(spi0,
-                    {
-                        .rst  = rst,
-                        .cs   = cs,
-                        .dcs  = dcs,
-                        .dreq = dreq,
-                    });
+// sjsu::lpc17xx::Gpio dreq(2, 4);  // blue
+// sjsu::lpc17xx::Gpio rst(2, 5);   // gree
+// sjsu::lpc17xx::Gpio cs(2, 6);    // yellow
+// sjsu::lpc17xx::Gpio dcs(2, 7);   // orange
+// Vs1053b mp3_decoder(spi0,
+//                     {
+//                         .rst  = rst,
+//                         .cs   = cs,
+//                         .dcs  = dcs,
+//                         .dreq = dreq,
+//                     });
 
 // -----------------------------------------------------------------------------
 //                                TFT LCD
@@ -54,19 +57,29 @@ Vs1053b mp3_decoder(spi0,
 //                                  SD Card
 // -----------------------------------------------------------------------------
 
-sjsu::lpc17xx::Gpio sd_cs(1, 25);
-sjsu::lpc17xx::Gpio sd_cd(1, 26);
-sjsu::Sd sd_card(spi1, sd_cs, sd_cd);
+// sjsu::lpc17xx::Gpio sd_cs(1, 25);
+// sjsu::lpc17xx::Gpio sd_cd(1, 26);
+// sjsu::Sd sd_card(spi1, sd_cs, sd_cd);
+
+// -----------------------------------------------------------------------------
+//                                  Bluetooth
+// -----------------------------------------------------------------------------
+
+// TODO: change to actual gpio
+bluetooth::Hm10 hm10(uart2,
+                     sjsu::GetInactive<sjsu::Gpio>(),
+                     sjsu::GetInactive<sjsu::Gpio>());
 
 // -----------------------------------------------------------------------------
 //                                  Tasks
 // -----------------------------------------------------------------------------
 
-sjsu::rtos::TaskScheduler task_scheduler;
-Mp3PlayerTask mp3_player_task(mp3_decoder);
-AudioDataBufferTask<Mp3PlayerTask::kBufferLength> audio_buffer_task(
-    mp3_player_task);
-AudioDataDecodeTask<Mp3PlayerTask::kBufferLength> decoder_task(mp3_player_task);
+// sjsu::rtos::TaskScheduler task_scheduler;
+// Mp3PlayerTask mp3_player_task(mp3_decoder);
+// AudioDataBufferTask<Mp3PlayerTask::kBufferLength> audio_buffer_task(
+//     mp3_player_task);
+// AudioDataDecodeTask<Mp3PlayerTask::kBufferLength>
+// decoder_task(mp3_player_task);
 }  // namespace
 
 int main()
@@ -81,28 +94,40 @@ int main()
 
   sjsu::InitializePlatform();
 
-  sd_card.Initialize();
+  hm10.Initialize();
+  hm10.Enable();
+  hm10.Send("AT-HELP");
+
+  while (true)
+  {
+    if (uart2.HasData())
+    {
+      printf("%c", uart2.Read());
+    }
+  }
+
+  // sd_card.Initialize();
   // Register and mount FatFs
-  FATFS fat_fs;
-  if (!sjsu::RegisterFatFsDrive(&sd_card))
-  {
-    return -1;
-  }
-  if (f_mount(&fat_fs, "", 0) != 0)
-  {
-    sjsu::LogError("Failed to mount SD Card");
-    return -2;
-  }
+  // FATFS fat_fs;
+  // if (!sjsu::RegisterFatFsDrive(&sd_card))
+  // {
+  //   return -1;
+  // }
+  // if (f_mount(&fat_fs, "", 0) != 0)
+  // {
+  //   sjsu::LogError("Failed to mount SD Card");
+  //   return -2;
+  // }
 
-  mp3_decoder.Initialize();
-  mp3_decoder.SetVolume(0.8f);
+  // mp3_decoder.Initialize();
+  // mp3_decoder.SetVolume(0.8f);
 
-  task_scheduler.AddTask(&mp3_player_task);
-  task_scheduler.AddTask(&audio_buffer_task);
-  task_scheduler.AddTask(&decoder_task);
-  task_scheduler.Start();
+  // task_scheduler.AddTask(&mp3_player_task);
+  // task_scheduler.AddTask(&audio_buffer_task);
+  // task_scheduler.AddTask(&decoder_task);
+  // task_scheduler.Start();
 
-  sjsu::Halt();
+  // sjsu::Halt();
 
   return 0;
 }

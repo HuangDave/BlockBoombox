@@ -23,17 +23,21 @@ open class BluetoothPeripheral: NSObject, CBCentralManagerDelegate, CBPeripheral
     centralManager = CBCentralManager(delegate: self, queue: nil)
   }
 
-  // MARK: -
+  // MARK: - 
 
   open func startScan() {
-    centralManager.scanForPeripherals(withServices: [serviceUUID])
+    print("Starting scan")
+        centralManager.scanForPeripherals(withServices: nil)
+//    centralManager.scanForPeripherals(withServices: [serviceUUID])
   }
 
   open func stopScan() {
+    print("Stopping scan")
     centralManager.stopScan()
   }
 
   func connectToPeripheral(_ peripheral: CBPeripheral) {
+    print("Attempting to connect \(peripheral)")
     pendingPeripheral = peripheral
     centralManager.connect(peripheral, options: nil)
   }
@@ -46,7 +50,7 @@ open class BluetoothPeripheral: NSObject, CBCentralManagerDelegate, CBPeripheral
     }
   }
 
-  // MARK: -
+  // MARK: - Data Transfer
 
   func send(bytes: [UInt8]) {
     guard isReady else { return }
@@ -81,7 +85,8 @@ open class BluetoothPeripheral: NSObject, CBCentralManagerDelegate, CBPeripheral
                              advertisementData: [String : Any], rssi RSSI: NSNumber) {
     print("didDiscover: \(peripheral)")
     centralManager.stopScan()
-    centralManager.connect(peripheral)
+    pendingPeripheral = peripheral
+    centralManager.connect(pendingPeripheral!)
   }
 
   public func centralManager(_ central: CBCentralManager, didConnect peripheral: CBPeripheral) {
