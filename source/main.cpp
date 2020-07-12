@@ -6,9 +6,9 @@
 #include "L3_Application/fatfs.hpp"
 #include "utility/log.hpp"
 
-#include "drivers/hm10.hpp"
 #include "drivers/st7735.hpp"
 #include "drivers/vs1053b.hpp"
+#include "drivers/zs040.hpp"
 #include "tasks/audio_data_buffer_task.hpp"
 #include "tasks/mp3_player_task.hpp"
 
@@ -65,10 +65,10 @@ sjsu::lpc17xx::Uart uart2(sjsu::lpc17xx::UartPort::kUart2);
 //                                  Bluetooth
 // -----------------------------------------------------------------------------
 
-// TODO: change to actual gpio
-bluetooth::Hm10 hm10(uart2,
-                     sjsu::GetInactive<sjsu::Gpio>(),
-                     sjsu::GetInactive<sjsu::Gpio>());
+constexpr uint32_t kZs040DefaultBaudRate = 38'400;
+sjsu::lpc17xx::Gpio hm10_state(0, 0);
+sjsu::lpc17xx::Gpio hm10_enable(0, 1);
+bluetooth::Zs040 zs040(uart2, hm10_enable, hm10_state, kZs040DefaultBaudRate);
 
 // -----------------------------------------------------------------------------
 //                                  Tasks
@@ -94,16 +94,16 @@ int main()
 
   sjsu::InitializePlatform();
 
-  hm10.Initialize();
-  hm10.Enable();
-  hm10.Send("AT-HELP");
+  zs040.Initialize();
+  // zs040.SetBaudRate(bluetooth::Zs040::BaudRate::kB115200);
+  zs040.SendCommand(bluetooth::Zs040::Command::kSerialBaudRate);
+  zs040.SendCommand(bluetooth::Zs040::Command::kVerify);
+  zs040.SendCommand(bluetooth::Zs040::Command::kVersion);
+  zs040.SendCommand(bluetooth::Zs040::Command::kUuid);
 
   while (true)
   {
-    if (uart2.HasData())
-    {
-      printf("%c", uart2.Read());
-    }
+    sjsu::Delay(500ms);
   }
 
   // sd_card.Initialize();
