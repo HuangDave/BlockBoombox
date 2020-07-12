@@ -23,11 +23,11 @@ open class BluetoothPeripheral: NSObject, CBCentralManagerDelegate, CBPeripheral
     centralManager = CBCentralManager(delegate: self, queue: nil)
   }
 
-  // MARK: - 
+  // MARK: -
 
   open func startScan() {
-    print("Starting scan")
-        centralManager.scanForPeripherals(withServices: nil)
+    print("Scanning for bluetooth peripheral: \(serviceUUID)")
+    centralManager.scanForPeripherals(withServices: [])
 //    centralManager.scanForPeripherals(withServices: [serviceUUID])
   }
 
@@ -37,9 +37,10 @@ open class BluetoothPeripheral: NSObject, CBCentralManagerDelegate, CBPeripheral
   }
 
   func connectToPeripheral(_ peripheral: CBPeripheral) {
-    print("Attempting to connect \(peripheral)")
+    guard pendingPeripheral == nil else { return }
+    print("Attempting to connect: \(peripheral)")
     pendingPeripheral = peripheral
-    centralManager.connect(peripheral, options: nil)
+    centralManager.connect(peripheral)
   }
 
   func disconnect() {
@@ -64,41 +65,47 @@ open class BluetoothPeripheral: NSObject, CBCentralManagerDelegate, CBPeripheral
   public func centralManagerDidUpdateState(_ central: CBCentralManager) {
     switch central.state {
     case .unknown:
-      print("central.state is .unknown")
+      print("CBCentralManager state: .unknown")
     case .resetting:
-      print("central.state is .resetting")
+      print("CBCentralManager state: .resetting")
     case .unsupported:
-      print("central.state is .unsupported")
+      print("CBCentralManager state: .unsupported")
     case .unauthorized:
-      print("central.state is .unauthorized")
+      print("CBCentralManager state: .unauthorized")
     case .poweredOff:
-      print("central.state is .poweredOff")
+      print("CBCentralManager state: .poweredOff")
     case .poweredOn:
-      print("central.state is .poweredOn")
+      print("CBCentralManager state: .poweredOn")
       startScan()
-    default: break
+    default: print(central.state)
     }
   }
 
   public func centralManager(_ central: CBCentralManager,
                              didDiscover peripheral: CBPeripheral,
                              advertisementData: [String : Any], rssi RSSI: NSNumber) {
-    print("didDiscover: \(peripheral)")
-    centralManager.stopScan()
-    pendingPeripheral = peripheral
-    centralManager.connect(pendingPeripheral!)
+    print("Discovered: \(peripheral)")
+    if (peripheral.identifier.uuidString == serviceUUID.uuidString) {
+      connectToPeripheral(peripheral)
+    }
   }
 
   public func centralManager(_ central: CBCentralManager, didConnect peripheral: CBPeripheral) {
-    print("Connected!")
+    stopScan()
+    print("Connected to peripheral: \(peripheral)")
     connectedPeripheral = peripheral
-    connectedPeripheral?.delegate = self
+    connectedPeripheral!.delegate = self
     connectedPeripheral!.discoverServices([serviceUUID])
   }
 
   public func centralManager(_ central: CBCentralManager,
                              didFailToConnect peripheral: CBPeripheral,
                              error: Error?) {
+    print("Failed to connect to peripheral: \(peripheral)")
+  }
+
+  public func centralManager(_ central: CBCentralManager,
+                             didDisconnectPeripheral peripheral: CBPeripheral, error: Error?) {
 
   }
 
@@ -106,7 +113,7 @@ open class BluetoothPeripheral: NSObject, CBCentralManagerDelegate, CBPeripheral
 
   public func peripheral(_ peripheral: CBPeripheral, didDiscoverServices error: Error?) {
     guard let services = peripheral.services else { return }
-
+    print("Discovered services: \(services.count)")
     for service in services {
       print(service)
       peripheral.discoverCharacteristics(nil, for: service)
@@ -116,7 +123,6 @@ open class BluetoothPeripheral: NSObject, CBCentralManagerDelegate, CBPeripheral
   public func peripheral(_ peripheral: CBPeripheral,
                          didDiscoverCharacteristicsFor service: CBService, error: Error?) {
     guard let characteristics = service.characteristics else { return }
-
     for characteristic in characteristics {
       print(characteristic)
     }
