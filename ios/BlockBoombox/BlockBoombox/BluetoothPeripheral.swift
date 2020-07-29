@@ -9,7 +9,9 @@ open class BluetoothPeripheral: NSObject, CBCentralManagerDelegate, CBPeripheral
   weak var writeCharacteristic: CBCharacteristic?
   private var writeType: CBCharacteristicWriteType = .withoutResponse
 
-  open var serviceUUID: CBUUID { fatalError("Must override with desired UUID") }
+  private(set) var deviceUUID: CBUUID!
+  private(set) var serviceUUID: CBUUID!
+  private(set) var characteristicUUID: CBUUID!
 
   public var isPoweredOn: Bool { return centralManager.state == .poweredOn }
   public var isConnected: Bool { return connectedPeripheral != nil }
@@ -18,17 +20,19 @@ open class BluetoothPeripheral: NSObject, CBCentralManagerDelegate, CBPeripheral
 
   // MARK: -
 
-  public  override init() {
+  public init(deviceUUID: CBUUID, serviceUUID: CBUUID, characteristicUUID: CBUUID) {
     super.init()
+    self.deviceUUID = deviceUUID
+    self.serviceUUID = serviceUUID
+    self.characteristicUUID = characteristicUUID
     centralManager = CBCentralManager(delegate: self, queue: nil)
   }
 
   // MARK: -
 
   open func startScan() {
-    print("Scanning for bluetooth peripheral: \(serviceUUID)")
-    centralManager.scanForPeripherals(withServices: [])
-//    centralManager.scanForPeripherals(withServices: [serviceUUID])
+    print("Scanning for bluetooth peripheral: \(String(describing: deviceUUID))")
+    centralManager.scanForPeripherals(withServices: [serviceUUID])
   }
 
   open func stopScan() {
@@ -55,9 +59,16 @@ open class BluetoothPeripheral: NSObject, CBCentralManagerDelegate, CBPeripheral
 
   func send(bytes: [UInt8]) {
     guard isReady else { return }
+    guard let writeCharacteristic = writeCharacteristic else { return }
+
+    print("Sending \(bytes)")
 
     let data = Data(bytes: bytes, count: bytes.count)
-    connectedPeripheral!.writeValue(data, for: writeCharacteristic!, type: writeType)
+    connectedPeripheral!.writeValue(data, for: writeCharacteristic, type: writeType)
+  }
+
+  func send(message: String) {
+    send(bytes: Array(message.utf8))
   }
 
   // MARK: - CBCentralManagerDelegate
@@ -85,15 +96,17 @@ open class BluetoothPeripheral: NSObject, CBCentralManagerDelegate, CBPeripheral
                              didDiscover peripheral: CBPeripheral,
                              advertisementData: [String : Any], rssi RSSI: NSNumber) {
     print("Discovered: \(peripheral)")
-    if (peripheral.identifier.uuidString == serviceUUID.uuidString) {
+    if (peripheral.identifier.uuidString == deviceUUID.uuidString) {
       connectToPeripheral(peripheral)
     }
   }
 
   public func centralManager(_ central: CBCentralManager, didConnect peripheral: CBPeripheral) {
-    stopScan()
     print("Connected to peripheral: \(peripheral)")
+    print("Stopping scan...")
+    stopScan()
     connectedPeripheral = peripheral
+    pendingPeripheral = nil
     connectedPeripheral!.delegate = self
     connectedPeripheral!.discoverServices([serviceUUID])
   }
@@ -106,25 +119,33 @@ open class BluetoothPeripheral: NSObject, CBCentralManagerDelegate, CBPeripheral
 
   public func centralManager(_ central: CBCentralManager,
                              didDisconnectPeripheral peripheral: CBPeripheral, error: Error?) {
-
+    print("Disconnected: \(peripheral)")
   }
 
   // MARK: - CBPeripheralDelegate
 
   public func peripheral(_ peripheral: CBPeripheral, didDiscoverServices error: Error?) {
     guard let services = peripheral.services else { return }
-    print("Discovered services: \(services.count)")
+    print("Services: \(services.count)")
     for service in services {
       print(service)
-      peripheral.discoverCharacteristics(nil, for: service)
+      peripheral.discoverCharacteristics([characteristicUUID], for: service)
     }
   }
 
   public func peripheral(_ peripheral: CBPeripheral,
                          didDiscoverCharacteristicsFor service: CBService, error: Error?) {
     guard let characteristics = service.characteristics else { return }
+    print("Characteristics: \(characteristics.count)")
     for characteristic in characteristics {
       print(characteristic)
+      if characteristic.uuid == characteristicUUID {
+        writeCharacteristic = characteristics[0]
+        writeType = characteristic.properties.contains(.write) ? .withResponse : .withoutResponse
+
+        send(message: "Connected\n")
+        return
+      }
     }
   }
 }

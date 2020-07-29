@@ -16,7 +16,6 @@
 		635653B824B45E990065DB3E /* BlockBoomboxTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 635653B724B45E990065DB3E /* BlockBoomboxTests.swift */; };
 		635653C324B45E990065DB3E /* BlockBoomboxUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 635653C224B45E990065DB3E /* BlockBoomboxUITests.swift */; };
 		635653D424B45FFA0065DB3E /* BluetoothPeripheral.swift in Sources */ = {isa = PBXBuildFile; fileRef = 635653D324B45FFA0065DB3E /* BluetoothPeripheral.swift */; };
-		635653D624B46D180065DB3E /* HM10.swift in Sources */ = {isa = PBXBuildFile; fileRef = 635653D524B46D180065DB3E /* HM10.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -53,7 +52,6 @@
 		635653C424B45E990065DB3E /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		635653D124B45F820065DB3E /* CoreBluetooth.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreBluetooth.framework; path = System/Library/Frameworks/CoreBluetooth.framework; sourceTree = SDKROOT; };
 		635653D324B45FFA0065DB3E /* BluetoothPeripheral.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BluetoothPeripheral.swift; sourceTree = "<group>"; };
-		635653D524B46D180065DB3E /* HM10.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HM10.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -108,7 +106,6 @@
 				635653AE24B45E990065DB3E /* Info.plist */,
 				635653A424B45E960065DB3E /* ViewController.swift */,
 				635653D324B45FFA0065DB3E /* BluetoothPeripheral.swift */,
-				635653D524B46D180065DB3E /* HM10.swift */,
 				635653D724B46D410065DB3E /* Supporting Files */,
 			);
 			path = BlockBoombox;
@@ -306,7 +303,6 @@
 			files = (
 				635653D424B45FFA0065DB3E /* BluetoothPeripheral.swift in Sources */,
 				635653A524B45E960065DB3E /* ViewController.swift in Sources */,
-				635653D624B46D180065DB3E /* HM10.swift in Sources */,
 				635653A124B45E960065DB3E /* AppDelegate.swift in Sources */,
 				635653A324B45E960065DB3E /* SceneDelegate.swift in Sources */,
 			);
