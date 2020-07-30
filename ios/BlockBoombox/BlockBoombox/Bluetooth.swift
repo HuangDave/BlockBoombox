@@ -1,17 +1,17 @@
 import CoreBluetooth
 
-open class BluetoothPeripheral: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
+open class Bluetooth: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate, SerialPeripheral {
   private(set) var centralManager : CBCentralManager!
 
-  private var pendingPeripheral: CBPeripheral?
-  private var connectedPeripheral: CBPeripheral?
+  private(set) var pendingPeripheral: CBPeripheral?
+  private(set) var connectedPeripheral: CBPeripheral?
 
-  weak var writeCharacteristic: CBCharacteristic?
-  private var writeType: CBCharacteristicWriteType = .withoutResponse
+  private(set) weak var writeCharacteristic: CBCharacteristic?
+  private(set) var writeType: CBCharacteristicWriteType = .withoutResponse
 
-  private(set) var deviceUUID: CBUUID!
-  private(set) var serviceUUID: CBUUID!
-  private(set) var characteristicUUID: CBUUID!
+  public private(set) var deviceUUID: CBUUID!
+  public private(set) var serviceUUID: CBUUID!
+  public private(set) var characteristicUUID: CBUUID!
 
   public var isPoweredOn: Bool { return centralManager.state == .poweredOn }
   public var isConnected: Bool { return connectedPeripheral != nil }
@@ -53,22 +53,6 @@ open class BluetoothPeripheral: NSObject, CBCentralManagerDelegate, CBPeripheral
     } else if let peripheral = pendingPeripheral {
       centralManager.cancelPeripheralConnection(peripheral)
     }
-  }
-
-  // MARK: - Data Transfer
-
-  func send(bytes: [UInt8]) {
-    guard isReady else { return }
-    guard let writeCharacteristic = writeCharacteristic else { return }
-
-    print("Sending \(bytes)")
-
-    let data = Data(bytes: bytes, count: bytes.count)
-    connectedPeripheral!.writeValue(data, for: writeCharacteristic, type: writeType)
-  }
-
-  func send(message: String) {
-    send(bytes: Array(message.utf8))
   }
 
   // MARK: - CBCentralManagerDelegate
