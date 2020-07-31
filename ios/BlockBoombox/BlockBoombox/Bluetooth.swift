@@ -1,6 +1,15 @@
 import CoreBluetooth
 
-open class Bluetooth: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate, SerialPeripheral {
+extension SerialPeripheral where Self: Bluetooth {
+  public func send(data: Data) {
+    guard isReady else { return }
+    guard let writeCharacteristic = writeCharacteristic else { return }
+    connectedPeripheral!.writeValue(data, for: writeCharacteristic, type: writeType)
+  }
+}
+
+// MARK: -
+open class Bluetooth: NSObject, SerialPeripheral {
   private(set) var centralManager : CBCentralManager!
 
   private(set) var pendingPeripheral: CBPeripheral?
@@ -18,7 +27,7 @@ open class Bluetooth: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate, 
   public var isReady: Bool { return isPoweredOn && isConnected }
   public var isScanning: Bool { return centralManager.isScanning }
 
-  // MARK: -
+  // MARK: - Initialization
 
   public init(deviceUUID: CBUUID, serviceUUID: CBUUID, characteristicUUID: CBUUID) {
     super.init()
@@ -28,35 +37,33 @@ open class Bluetooth: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate, 
     centralManager = CBCentralManager(delegate: self, queue: nil)
   }
 
-  // MARK: -
+  // MARK: - Connection
 
-  open func startScan() {
-    print("Scanning for bluetooth peripheral: \(String(describing: deviceUUID))")
+  public func startScan() {
     centralManager.scanForPeripherals(withServices: [serviceUUID])
   }
 
-  open func stopScan() {
-    print("Stopping scan")
+  public func stopScan() {
     centralManager.stopScan()
   }
 
-  func connectToPeripheral(_ peripheral: CBPeripheral) {
+  private func connectToPeripheral(_ peripheral: CBPeripheral) {
     guard pendingPeripheral == nil else { return }
-    print("Attempting to connect: \(peripheral)")
     pendingPeripheral = peripheral
     centralManager.connect(peripheral)
   }
 
-  func disconnect() {
+  public func disconnect() {
     if let peripheral = connectedPeripheral {
       centralManager.cancelPeripheralConnection(peripheral)
     } else if let peripheral = pendingPeripheral {
       centralManager.cancelPeripheralConnection(peripheral)
     }
   }
+}
 
-  // MARK: - CBCentralManagerDelegate
-
+// MARK: - CBCentralManagerDelegate Implementation
+extension Bluetooth: CBCentralManagerDelegate {
   public func centralManagerDidUpdateState(_ central: CBCentralManager) {
     switch central.state {
     case .unknown:
@@ -79,15 +86,12 @@ open class Bluetooth: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate, 
   public func centralManager(_ central: CBCentralManager,
                              didDiscover peripheral: CBPeripheral,
                              advertisementData: [String : Any], rssi RSSI: NSNumber) {
-    print("Discovered: \(peripheral)")
     if (peripheral.identifier.uuidString == deviceUUID.uuidString) {
       connectToPeripheral(peripheral)
     }
   }
 
   public func centralManager(_ central: CBCentralManager, didConnect peripheral: CBPeripheral) {
-    print("Connected to peripheral: \(peripheral)")
-    print("Stopping scan...")
     stopScan()
     connectedPeripheral = peripheral
     pendingPeripheral = nil
@@ -102,15 +106,18 @@ open class Bluetooth: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate, 
   }
 
   public func centralManager(_ central: CBCentralManager,
-                             didDisconnectPeripheral peripheral: CBPeripheral, error: Error?) {
+                             didDisconnectPeripheral peripheral: CBPeripheral,
+                             error: Error?
+  ) {
     print("Disconnected: \(peripheral)")
   }
+}
 
-  // MARK: - CBPeripheralDelegate
-
+// MARK: - CBPeripheralDelegate Implementation
+extension Bluetooth: CBPeripheralDelegate {
   public func peripheral(_ peripheral: CBPeripheral, didDiscoverServices error: Error?) {
     guard let services = peripheral.services else { return }
-    print("Services: \(services.count)")
+
     for service in services {
       print(service)
       peripheral.discoverCharacteristics([characteristicUUID], for: service)
@@ -118,9 +125,11 @@ open class Bluetooth: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate, 
   }
 
   public func peripheral(_ peripheral: CBPeripheral,
-                         didDiscoverCharacteristicsFor service: CBService, error: Error?) {
+                         didDiscoverCharacteristicsFor service: CBService,
+                         error: Error?
+  ) {
     guard let characteristics = service.characteristics else { return }
-    print("Characteristics: \(characteristics.count)")
+
     for characteristic in characteristics {
       print(characteristic)
       if characteristic.uuid == characteristicUUID {

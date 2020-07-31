@@ -15,11 +15,3 @@ extension SerialPeripheral {
     send(bytes: Array(message.utf8))
   }
 }
-
-extension SerialPeripheral where Self: Bluetooth {
-  public func send(data: Data) {
-    guard isReady else { return }
-    guard let writeCharacteristic = writeCharacteristic else { return }
-    connectedPeripheral!.writeValue(data, for: writeCharacteristic, type: writeType)
-  }
-}
