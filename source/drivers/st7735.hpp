@@ -1,13 +1,12 @@
 #pragma once
 
+#include "../graphics/graphics.hpp"
 #include "L1_Peripheral/gpio.hpp"
 #include "L1_Peripheral/spi.hpp"
 #include "L2_HAL/displays/pixel_display.hpp"
 #include "utility/bit.hpp"
 #include "utility/enum.hpp"
 #include "utility/log.hpp"
-
-#include "../graphics/graphics.hpp"
 
 class St7735 final : public sjsu::PixelDisplay
 {
@@ -52,7 +51,7 @@ class St7735 final : public sjsu::PixelDisplay
   {
   }
 
-  void Initialize() override
+  virtual void ModuleInitialize() override
   {
     rst_pin_.SetAsOutput();
     rst_pin_.SetHigh();
@@ -61,11 +60,25 @@ class St7735 final : public sjsu::PixelDisplay
     dc_pin_.SetAsOutput();
     dc_pin_.SetHigh();
 
-    spi_.SetClock(kSpiFrequency);
-    spi_.SetDataSize(sjsu::Spi::DataSize::kEight);
+    spi_.ConfigureFrequency(kSpiFrequency);
+    spi_.ConfigureFrameSize(sjsu::Spi::FrameSize::kEightBits);
     spi_.Initialize();
 
     Reset();
+  }
+
+  virtual void ModuleEnable(bool enable = true) override
+  {
+    if (enable)
+    {
+      WriteCommand(Command::kDisplayOn);
+      sjsu::Delay(100us);
+    }
+    else
+    {
+      WriteCommand(Command::kDisplayOff);
+      sjsu::Delay(100us);
+    }
   }
 
   size_t GetWidth() override
@@ -87,18 +100,6 @@ class St7735 final : public sjsu::PixelDisplay
   {
     WriteCommand(on ? Command::kSleepIn : Command::kSleepOut);
     sjsu::Delay(2ms);
-  }
-
-  void Enable() override
-  {
-    WriteCommand(Command::kDisplayOn);
-    sjsu::Delay(100us);
-  }
-
-  void Disable() override
-  {
-    WriteCommand(Command::kDisplayOff);
-    sjsu::Delay(100us);
   }
 
   void Reset()
@@ -183,7 +184,7 @@ class St7735 final : public sjsu::PixelDisplay
     cs_pin_.SetLow();
     {
       spi_.Transfer(static_cast<uint8_t>(data >> 8));
-      spi_.Transfer(data & 0xFF);
+      spi_.Transfer(static_cast<uint8_t>(data & 0xFF));
     }
     cs_pin_.SetHigh();
   }
@@ -212,11 +213,11 @@ class St7735 final : public sjsu::PixelDisplay
     }
   }
 
-  const sjsu::Spi & spi_;
-  const units::frequency::hertz_t kSpiFrequency;
-  const sjsu::Gpio & rst_pin_;
-  const sjsu::Gpio & cs_pin_;
-  const sjsu::Gpio & dc_pin_;
+  sjsu::Spi & spi_;
+  units::frequency::hertz_t kSpiFrequency;
+  sjsu::Gpio & rst_pin_;
+  sjsu::Gpio & cs_pin_;
+  sjsu::Gpio & dc_pin_;
 
   const size_t kScreenWidth;
   const size_t kScreenHeight;

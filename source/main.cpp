@@ -4,13 +4,13 @@
 #include "L1_Peripheral/lpc17xx/uart.hpp"
 #include "L2_HAL/memory/sd.hpp"
 #include "L3_Application/fatfs.hpp"
-#include "utility/log.hpp"
-
+#include "drivers/serial_bluetooth.hpp"
 #include "drivers/st7735.hpp"
 #include "drivers/vs1053b.hpp"
 #include "drivers/zs040.hpp"
 #include "tasks/audio_data_buffer_task.hpp"
 #include "tasks/mp3_player_task.hpp"
+#include "utility/log.hpp"
 
 // private namespace
 namespace
@@ -66,9 +66,12 @@ sjsu::lpc17xx::Uart uart2(sjsu::lpc17xx::UartPort::kUart2);
 // -----------------------------------------------------------------------------
 
 constexpr uint32_t kZs040DefaultBaudRate = 38'400;
-sjsu::lpc17xx::Gpio hm10_state(0, 0);
-sjsu::lpc17xx::Gpio hm10_enable(0, 1);
-bluetooth::Zs040 zs040(uart2, hm10_enable, hm10_state, kZs040DefaultBaudRate);
+sjsu::lpc17xx::Gpio ble_state(0, 0);
+sjsu::lpc17xx::Gpio ble_enable(0, 1);
+// SerialBluetooth zs040(uart2, hm10_enable, hm10_state, kZs040DefaultBaudRate);
+bluetooth::Zs040 zs040(uart2, ble_enable, ble_state, kZs040DefaultBaudRate);
+// bluetooth::Zs040 zs040(uart2, hm10_enable, hm10_state,
+// kZs040DefaultBaudRate);
 
 // -----------------------------------------------------------------------------
 //                                  Tasks
@@ -84,7 +87,7 @@ bluetooth::Zs040 zs040(uart2, hm10_enable, hm10_state, kZs040DefaultBaudRate);
 
 int main()
 {
-  sjsu::LogDebug("Starting Application");
+  sjsu::LogInfo("Starting Application");
 
   /// Configures the CPU clock to run at 96 MHz.
   auto & system_controller   = sjsu::SystemController::GetPlatformController();
@@ -95,11 +98,23 @@ int main()
   sjsu::InitializePlatform();
 
   zs040.Initialize();
-  // zs040.SetBaudRate(bluetooth::Zs040::BaudRate::kB115200);
-  zs040.SendCommand(bluetooth::Zs040::Command::kSerialBaudRate);
-  zs040.SendCommand(bluetooth::Zs040::Command::kVerify);
-  zs040.SendCommand(bluetooth::Zs040::Command::kVersion);
-  zs040.SendCommand(bluetooth::Zs040::Command::kUuid);
+  zs040.Enable();
+
+  if (zs040.IsAtMode())
+  {
+    sjsu::LogDebug("Is in AT Mode");
+    sjsu::LogDebug("Version:     %.*s", zs040.GetVersion());
+    sjsu::LogDebug("Baud:        %c", sjsu::Value(zs040.GetBaudRate()));
+    sjsu::LogDebug("Role:        %c", sjsu::Value(zs040.GetRole()));
+    sjsu::LogDebug("MAC Address: %.*s", zs040.GetMacAddress());
+    sjsu::LogDebug("Set Name:    %.*s", zs040.SetDeviceName("Some Device"));
+    sjsu::LogDebug("Device Name: %.*s", zs040.GetDeviceName());
+    sjsu::LogDebug("UUID:        %.*s", zs040.GetUuid());
+  }
+  else
+  {
+    sjsu::LogDebug("Not in AT Mode");
+  }
 
   while (true)
   {

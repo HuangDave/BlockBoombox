@@ -2,14 +2,13 @@
 
 #include "L1_Peripheral/gpio.hpp"
 #include "L1_Peripheral/spi.hpp"
+#include "audio_decoder.hpp"
 #include "utility/enum.hpp"
 #include "utility/time.hpp"
 
-#include "audio_decoder.hpp"
-
 /// Audio decoder capable of decoding various formats such as Ogg Vorbis, MP3,
 /// AAC, WMA, and MIDI.
-class Vs1053b : public AudioDecoder
+class Vs1053b : public AudioDecoder, public sjsu::Module
 {
  public:
   /// @see 7.4 Serial Protocol for Serial Command Interface (SPI / SCI)
@@ -103,7 +102,7 @@ class Vs1053b : public AudioDecoder
   {
   }
 
-  void Initialize() const override
+  virtual void ModuleInitialize() override
   {
     pins_.rst.SetAsOutput();
     pins_.rst.SetHigh();
@@ -131,8 +130,8 @@ class Vs1053b : public AudioDecoder
     //
     // Once the SCI_CLOCKF multiplier is set, the SPI clock can be changed to
     // faster speeds.
-    spi_.SetClock(3_MHz);
-    spi_.SetDataSize(sjsu::Spi::DataSize::kEight);
+    spi_.ConfigureFrequency(3_MHz);
+    spi_.ConfigureFrameSize(sjsu::Spi::FrameSize::kEightBits);
     spi_.Initialize();
 
     Reset();
@@ -155,6 +154,8 @@ class Vs1053b : public AudioDecoder
     read_speed_                               = kClki / 7;
     write_speed_                              = kClki / 4;
   }
+
+  virtual void ModuleEnable([[maybe_unused]] bool enable) override {}
 
   /// @see Data Request Pin DREQ
   ///      https://cdn-shop.adafruit.com/datasheets/vs1053.pdf#page=16
@@ -276,15 +277,18 @@ class Vs1053b : public AudioDecoder
   {
     WaitForReadyStatus();
 
-    spi_.SetClock(read_speed_);
+    spi_.ConfigureFrequency(read_speed_);
 
     uint16_t data = 0x0;
     pins_.cs.SetLow();
     {
+      constexpr uint8_t kEmptyByte = 0x00;
+
       spi_.Transfer(sjsu::Value(Operation::kRead));
       spi_.Transfer(sjsu::Value(address));
-      data = static_cast<uint16_t>(data | (spi_.Transfer(0x00) << 8));
-      data = data | spi_.Transfer(0x00);
+
+      data = static_cast<uint16_t>(data | (spi_.Transfer(kEmptyByte) << 8));
+      data = static_cast<uint16_t>(data | spi_.Transfer(kEmptyByte));
     }
     pins_.cs.SetHigh();
     return data;
@@ -303,14 +307,14 @@ class Vs1053b : public AudioDecoder
   {
     WaitForReadyStatus();
 
-    spi_.SetClock(write_speed_);
+    spi_.ConfigureFrequency(write_speed_);
 
     pins_.cs.SetLow();
     {
       spi_.Transfer(sjsu::Value(Operation::kWrite));
       spi_.Transfer(sjsu::Value(address));
       spi_.Transfer(static_cast<uint8_t>(data >> 8));
-      spi_.Transfer(data & 0xFF);
+      spi_.Transfer(static_cast<uint8_t>(data & 0xFF));
     }
     pins_.cs.SetHigh();
   }
@@ -324,7 +328,7 @@ class Vs1053b : public AudioDecoder
   {
     WaitForReadyStatus();
 
-    spi_.SetClock(write_speed_);
+    spi_.ConfigureFrequency(write_speed_);
 
     pins_.dcs.SetLow();
     {
@@ -336,8 +340,8 @@ class Vs1053b : public AudioDecoder
     pins_.dcs.SetHigh();
   }
 
-  const sjsu::Spi & spi_;
-  const ControlPins_t pins_;
+  sjsu::Spi & spi_;
+  ControlPins_t pins_;
   mutable units::frequency::hertz_t read_speed_  = 0_MHz;
   mutable units::frequency::hertz_t write_speed_ = 0_MHz;
 };

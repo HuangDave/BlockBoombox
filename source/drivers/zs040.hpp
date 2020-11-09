@@ -1,24 +1,11 @@
 #pragma once
 
-#include <initializer_list>
+#include <span>
+#include <string_view>
 
 #include "L1_Peripheral/gpio.hpp"
 #include "L1_Peripheral/uart.hpp"
-#include "utility/status.hpp"
-
-namespace sjsu
-{
-namespace bluetooth
-{
-class BluetoothLowEnergy
-{
- public:
-  virtual sjsu::Status Initialize() const = 0;
-  virtual bool GetState() const           = 0;
-  virtual void Disconnect() const         = 0;
-};
-}  // namespace bluetooth
-}  // namespace sjsu
+#include "module.hpp"
 
 namespace bluetooth
 {
@@ -32,32 +19,54 @@ namespace bluetooth
 ///      http://www.martyncurrey.com/bluetooth-modules/#HC-06-zs-040-hc01.com-v2.0
 /// @see For ZS-040 v2.1
 ///      http://www.martyncurrey.com/bluetooth-modules/#HC-05-zs-040-hc01.com-v2.1
-class Zs040 final : public sjsu::bluetooth::BluetoothLowEnergy
+class Zs040 final : public sjsu::Module
 {
  public:
+  enum class BaudRate : char
+  {
+    kB115200 = '0',
+    kB57600  = '1',
+    kB38400  = '2',
+    kB19200  = '3',
+    kB9600   = '4',
+  };
+
+  enum class Role : char
+  {
+    kSlave  = '0',
+    kMaster = '1',
+    kSensor = '2',
+    kBeacon = '3',
+    kWeChat = '4',
+  };
+
+  struct Command_t
+  {
+    const std::string_view instruction;
+    // Max response length in bytes not including the including the instruction.
+    const std::chrono::milliseconds timeout;
+
+    size_t GetParamPosition() const
+    {
+      return instruction.size() + 2;
+    }
+  };
+
   struct Command  // NOLINT
   {
-    /// Check whether the device is interfaced correctly. Should return "OK".
-    static constexpr char kVerify[] = "AT";
-    /// Get the device's version.
-    static constexpr char kVersion[] = "AT+VERSION";
-
-    /// Set/Get the device's mode.
-    static constexpr char kRole[] = "AT+ROLE";
-    /// Set/Get the device's serial baud rate.
-    static constexpr char kSerialBaudRate[] = "AT+BAUD";
-    /// Set/Get the device's UUID.
-    static constexpr char kUuid[] = "AT+UUID";
+    static constexpr Command_t kAt         = { "", 10ms };
+    static constexpr Command_t kVersion    = { "+VERSION", 40ms };
+    static constexpr Command_t kMacAddress = { "+LADDR", 100ms };
+    static constexpr Command_t kRole       = { "+ROLE", 25ms };
+    static constexpr Command_t kUuid       = { "+UUID", 35ms };
+    static constexpr Command_t kBaud       = { "+BAUD", 25ms };
+    static constexpr Command_t kDeviceName = { "+NAME", 100ms };
   };
 
-  enum class BaudRate : uint8_t
-  {
-    kB115200 = 0,
-    kB57600  = 1,
-    kB38400  = 2,
-    kB19200  = 3,
-    kB9600   = 4,
-  };
+  static constexpr std::chrono::milliseconds kDefaultTimeout = 20ms;
+
+  inline static constexpr uint32_t kDefaultBaudRate = 9'600;
+  inline static constexpr uint32_t kAtBaudRate      = 38'400;
 
   /// @note Some modules may have chip_enable and state as a floating pin;
   ///       therefore, the default parameter for these two pins shall be
@@ -67,38 +76,49 @@ class Zs040 final : public sjsu::bluetooth::BluetoothLowEnergy
   /// @param chip_enable The device's chip enable pin. When driven low, the
   ///                    device will disconnect any connected bluetooth devices.
   /// @param state The device's state pin.
-  /// @param default_baud_rate The initial default baud rate on reset.
-  ///                          depending on the device used.
   /// @param use_cr_nl When true, send carriage return (CR) and new line (NL) at
   ///                  the end of each command.
   explicit Zs040(sjsu::Uart & uart,
-                 sjsu::Gpio & chip_enable   = sjsu::GetInactive<sjsu::Gpio>(),
-                 sjsu::Gpio & state         = sjsu::GetInactive<sjsu::Gpio>(),
-                 uint32_t default_baud_rate = 9'600,
-                 bool use_cr_nl             = true)
+                 sjsu::Gpio & chip_enable = sjsu::GetInactive<sjsu::Gpio>(),
+                 sjsu::Gpio & state       = sjsu::GetInactive<sjsu::Gpio>(),
+                 bool use_cr_nl           = true)
       : uart_(uart),
         chip_enable_(chip_enable),
         state_(state),
-        default_baud_rate_(default_baud_rate),
         use_cr_nl_(use_cr_nl)
   {
   }
 
-  sjsu::Status Initialize() const override
+  // ---------------------------------------------------------------------------
+  //
+  // ---------------------------------------------------------------------------
+
+  virtual void ModuleInitialize() override
   {
     state_.SetAsInput();
     chip_enable_.SetAsOutput();
     chip_enable_.SetHigh();
 
-    return uart_.Initialize(default_baud_rate_);
+    uart_.Initialize();
+    uart_.ConfigureFormat();
+    uart_.ConfigureBaudRate(kAtBaudRate);
   }
 
-  bool GetState() const override
+  virtual void ModuleEnable([[maybe_unused]] bool enable) override
+  {
+    uart_.Enable();
+  }
+
+  // ---------------------------------------------------------------------------
+  //
+  // ---------------------------------------------------------------------------
+
+  bool GetDeviceState() const
   {
     return state_.Read();
   }
 
-  void Disconnect() const override
+  void Disconnect() const
   {
     chip_enable_.SetLow();
     // TODO: may need a slight delay here
@@ -106,62 +126,121 @@ class Zs040 final : public sjsu::bluetooth::BluetoothLowEnergy
   }
 
   // ---------------------------------------------------------------------------
-  //
+  // AT Command Mode
   // ---------------------------------------------------------------------------
 
-  void SetBaudRate(BaudRate baud_rate) const
+  bool IsAtMode()
   {
-    SendCommand(Command::kSerialBaudRate, { sjsu::Value(baud_rate) });
+    SendCommand(Command::kAt);
+    return (at_response_buffer[0] == 'O') && (at_response_buffer[1] == 'K');
+  }
+
+  bool EnterAtMode() const
+  {
+    return false;
+  }
+
+  bool ExitAtMode() const
+  {
+    return false;
   }
 
   // ---------------------------------------------------------------------------
   //
   // ---------------------------------------------------------------------------
 
-  void Read() const {}
-
-  void SendCommand(const char * command,
-                   const std::initializer_list<uint8_t> parameter = {}) const
+  const std::string_view GetVersion()
   {
-    for (size_t i = 0; i < strlen(command); i++)
-    {
-      uart_.Write(command[i]);
-    }
-    for (auto param : parameter)
-    {
-      uart_.Write(param);
-    }
+    SendCommand(Command::kVersion);
+    return &at_response_buffer[Command::kVersion.GetParamPosition()];
+  }
+
+  Role GetRole()
+  {
+    SendCommand(Command::kRole);
+    return Role(at_response_buffer[Command::kRole.GetParamPosition()]);
+  }
+
+  const std::string_view SetDeviceName(const std::string_view device_name)
+  {
+    SendCommand(Command::kDeviceName, device_name);
+    return &at_response_buffer[Command::kDeviceName.GetParamPosition()];
+  }
+
+  const std::string_view GetDeviceName()
+  {
+    SendCommand(Command::kDeviceName);
+    return at_response_buffer;
+    // return &at_response_buffer[Command::kDeviceName.GetParamPosition()];
+  }
+
+  const std::string_view GetMacAddress()
+  {
+    SendCommand(Command::kMacAddress);
+    return &at_response_buffer[Command::kMacAddress.GetParamPosition()];
+  }
+
+  BaudRate SetBaudRate([[maybe_unused]] BaudRate baud)
+  {
+    const char baud_select = sjsu::Value(baud);
+    SendCommand(Command::kBaud, &baud_select);
+    return BaudRate(at_response_buffer[Command::kBaud.GetParamPosition()]);
+  }
+
+  BaudRate GetBaudRate()
+  {
+    SendCommand(Command::kBaud);
+    return BaudRate(at_response_buffer[Command::kBaud.GetParamPosition()]);
+  }
+
+  /// @param uuid The UUID should be in the range of 0x0001 to 0xFFE0
+  const std::string_view SetUuid(const std::string_view uuid)
+  {
+    SendCommand(Command::kUuid, uuid);
+    return &at_response_buffer[Command::kUuid.GetParamPosition()];
+  }
+
+  const std::string_view GetUuid()
+  {
+    SendCommand(Command::kUuid);
+    return &at_response_buffer[Command::kUuid.GetParamPosition()];
+  }
+
+  // ---------------------------------------------------------------------------
+  //
+  // ---------------------------------------------------------------------------
+
+  void SendCommand(const Command_t command,
+                   const std::string_view parameter = "")
+  {
+    constexpr std::string_view kPrefix = "AT";
+
+    uart_.Write(kPrefix);
+    uart_.Write(command.instruction);
+    uart_.Write(parameter);
+
     if (use_cr_nl_)
     {
-      uart_.Write('\r');
-      uart_.Write('\n');
+      constexpr std::string_view kCrNl = "\r\n";
+      uart_.Write(kCrNl);
     }
 
-    // Flush out uart, by extracting the response but only printing if debug is
-    // enabled.
-    constexpr size_t kMaxResponseLength = 20;
-    char response[kMaxResponseLength]   = { '\0' };
-    uint8_t i                           = 0;
-    while (uart_.HasData() && i < kMaxResponseLength)
-    {
-      char c = uart_.Read();
-      if (c == '\n')
-      {
-        break;
-      }
-      response[i] = c;
-      i++;
-    }
-    sjsu::LogDebug("%s", response);
+    memset(at_response_buffer, '\0', sizeof(at_response_buffer));
+
+    uart_.Read(std::span(reinterpret_cast<uint8_t *>(at_response_buffer),
+                         std::size(at_response_buffer)),
+               command.timeout);
   }
 
  private:
-  const sjsu::Uart & uart_;
-  const sjsu::Gpio & chip_enable_;
-  const sjsu::Gpio & state_;
-  /// @note The initial baud rate can be either 9'600 bps or 38'400 bps
-  ///       depending on the device used.
-  const uint32_t default_baud_rate_;
+  sjsu::Uart & uart_;
+  sjsu::Gpio & chip_enable_;
+  sjsu::Gpio & state_;
+
+  /// Buffer for holding responses in AT Command Mode.
+  char at_response_buffer[30];
+
+  /// Includes CR & NL when sending AT Command when set to true.
   const bool use_cr_nl_;
 };
 }  // namespace bluetooth
