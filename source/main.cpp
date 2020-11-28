@@ -93,7 +93,7 @@ int main()
   auto & system_controller   = sjsu::SystemController::GetPlatformController();
   auto & clock_configuration = system_controller.GetClockConfiguration<
       sjsu::lpc17xx::SystemController::ClockConfiguration_t>();
-  clock_configuration.cpu.divider = 3;
+  clock_configuration.cpu.divider = 3; // 48 MHz
 
   sjsu::InitializePlatform();
 
@@ -102,14 +102,14 @@ int main()
 
   if (zs040.IsAtMode())
   {
-    sjsu::LogDebug("Is in AT Mode");
-    sjsu::LogDebug("Version:     %.*s", zs040.GetVersion());
-    sjsu::LogDebug("Baud:        %c", sjsu::Value(zs040.GetBaudRate()));
-    sjsu::LogDebug("Role:        %c", sjsu::Value(zs040.GetRole()));
-    sjsu::LogDebug("MAC Address: %.*s", zs040.GetMacAddress());
-    sjsu::LogDebug("Set Name:    %.*s", zs040.SetDeviceName("Some Device"));
-    sjsu::LogDebug("Device Name: %.*s", zs040.GetDeviceName());
-    sjsu::LogDebug("UUID:        %.*s", zs040.GetUuid());
+    sjsu::LogInfo("Is in AT Mode");
+    sjsu::LogInfo("Version:     %.*s", zs040.GetVersion());
+    sjsu::LogInfo("Baud:        %c", sjsu::Value(zs040.GetBaudRate()));
+    sjsu::LogInfo("Role:        %c", sjsu::Value(zs040.GetRole()));
+    sjsu::LogInfo("MAC Address: %.*s", zs040.GetMacAddress());
+    sjsu::LogInfo("Set Name:    %d", zs040.SetDeviceName("Some Device"));
+    sjsu::LogInfo("Device Name: %.*s", zs040.GetDeviceName());
+    sjsu::LogInfo("UUID:        %.*s", zs040.GetUuid());
   }
   else
   {
